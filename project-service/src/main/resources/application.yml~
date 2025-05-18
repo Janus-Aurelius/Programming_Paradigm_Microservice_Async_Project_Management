@@ -1,0 +1,69 @@
+server:
+  port: 8082
+  servlet:
+    context-path: /api/projects
+
+spring:
+  application:
+    name: project-service
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/projectdb
+  main:
+    allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.trusted.packages: "com.pm.contracts.*"
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer  # Deserializes message keys
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # Deserializes message values
+      group-id: project-service-group  # Consumer group for load balancing
+      auto-offset-reset: earliest  # Start from earliest message if no offset is present
+      enable-auto-commit: true  # Automatically commit offsets (set false for manual control)
+      properties:
+        spring.json.trusted.packages: "com.pm.contracts.*"
+
+kafka:
+  topic:
+    project-events: project-events
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.projectservice: DEBUG
+    reactor.kafka.sender: INFO # Added for Kafka sender logging
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n" # Added logging pattern
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/projectdb
+  kafka:
+    bootstrap-servers: kafka:9092
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/projectdb
+  kafka:
+    bootstrap-servers: localhost:9092

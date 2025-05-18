@@ -1,0 +1,13 @@
+package com.pm.notificationservice.repository;
+
+import com.pm.notificationservice.model.Notification;
+import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Flux;
+
+@Repository
+public interface NotificationRepository extends ReactiveMongoRepository<Notification, String> {
+    Flux<Notification> findByRecipientUserIdOrderByTimestampDesc(String recipientUserId);
+    Flux<Notification> findByRecipientUserIdAndReadIsFalse(String recipientUserId);
+    Flux<Notification> findByrecipientUserId(String recipientUserId);
+}

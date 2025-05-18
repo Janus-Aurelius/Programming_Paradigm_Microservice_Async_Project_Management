@@ -1,0 +1,70 @@
+server:
+  port: 8088 # Assigning port 8088
+  servlet:
+    context-path: /api/comments # Setting context path
+spring:
+  application:
+    name: comment-service
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/commentdb # Default to docker profile DB
+  main:
+    allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: kafka:9092 # Default to docker profile Kafka
+    # --- Kafka Producer Configuration ---
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.trusted.packages: " com.pm.commoncontracts.*"
+    # --- Kafka Consumer Configuration ---
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      group-id: comment-service-group # Unique consumer group
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+      properties:
+        spring.json.trusted.packages: " com.pm.commoncontracts.*" # Trust contracts package
+
+kafka:
+  topic:
+    # Define topics this service produces/listens to (adjust as needed)
+    comment-events: comment-events
+    # project-events: project-events # Example if consuming project events
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.commentservice: DEBUG # Set specific package log level
+    reactor.kafka.sender: INFO # Added for Kafka sender logging
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n" # Added logging pattern
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*" # Expose all actuator endpoints
+
+---
+# Docker Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: docker
+  # MongoDB and Kafka URIs are already set for docker by default above
+
+---
+# Development Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: dev
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/commentdb # Local MongoDB for dev
+  kafka:
+    bootstrap-servers: localhost:9092 # Local Kafka for dev

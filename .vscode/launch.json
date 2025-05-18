@@ -1,0 +1,70 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Current File",
+            "request": "launch",
+            "mainClass": "${file}"
+        },
+        {
+            "type": "java",
+            "name": "ApiGatewayApplication",
+            "request": "launch",
+            "mainClass": "com.pm.apigateway.ApiGatewayApplication",
+            "projectName": "api-gateway"
+        },
+        {
+            "type": "java",
+            "name": "CommentServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.commentservice.CommentServiceApplication",
+            "projectName": "comment-service"
+        },
+        {
+            "type": "java",
+            "name": "CommonContractsApplication",
+            "request": "launch",
+            "mainClass": "com.pm.contracts.CommonContractsApplication",
+            "projectName": "common-contracts"
+        },
+        {
+            "type": "java",
+            "name": "NotificationServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.notificationservice.NotificationServiceApplication",
+            "projectName": "notification-service"
+        },
+        {
+            "type": "java",
+            "name": "ProjectServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.projectservice.ProjectServiceApplication",
+            "projectName": "project-service"
+        },
+        {
+            "type": "java",
+            "name": "TaskServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.taskservice.TaskServiceApplication",
+            "projectName": "task-service"
+        },
+        {
+            "type": "java",
+            "name": "UserServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.userservice.UserServiceApplication",
+            "projectName": "user-service"
+        },
+        {
+            "type": "java",
+            "name": "WebsocketServiceApplication",
+            "request": "launch",
+            "mainClass": "com.pm.websocketservice.WebsocketServiceApplication",
+            "projectName": "websocket-service"
+        }
+    ]
+}

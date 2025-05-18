@@ -1,0 +1,7 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "editor.fontFamily": "'Cascadia Code', 'Courier New', monospace",
+    "editor.fontLigatures": true,
+    "editor.fontSize": 14
+}

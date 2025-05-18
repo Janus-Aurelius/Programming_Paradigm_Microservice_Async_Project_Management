@@ -1,0 +1,16 @@
+package com.commoncontracts.requestDto.project;
+
+import com.commoncontracts.domain.ProjectStatus;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdateProjectStatusRequestDto {
+    @NotNull
+    private ProjectStatus newStatus;
+    private Long expectedVersion;
+}

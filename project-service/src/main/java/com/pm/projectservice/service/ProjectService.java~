@@ -1,0 +1,371 @@
+package com.pm.projectservice.service;
+
+// Shared module imports
+import com.commoncontracts.domain.ProjectStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate; // Import your event payload records
+import org.springframework.stereotype.Service; // Assuming this provides the context key
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.commoncontracts.dto.ProjectDto; // Using your existing mapper utility
+import com.commoncontracts.dto.TaskDto; // Your internal domain entity
+import com.commoncontracts.envelope.EventEnvelope;
+import com.commoncontracts.events.project.ProjectCreatedEventPayload;
+import com.commoncontracts.events.project.ProjectDeletedEventPayload;
+import com.commoncontracts.events.project.ProjectStatusChangedEventPayload;
+import com.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
+import com.commoncontracts.events.project.ProjectUpdatedEventPayload;
+import com.pm.projectservice.config.MdcLoggingFilter;
+import com.pm.projectservice.model.Project;
+import com.pm.projectservice.repository.ProjectRepository; // Import ContextView
+import com.pm.projectservice.utils.ProjectUtils;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.util.context.ContextView;
+
+@Service
+public class ProjectService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
+    private final ProjectRepository projectRepository;
+    private final ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate;
+    private final WebClient taskServiceWebClient = WebClient.builder()
+            .baseUrl("http://localhost:8081/api/tasks") // Adjust if service discovery/gateway is used
+            .build();
+
+    @Value("${spring.application.name}")
+    private String serviceName;
+    @Value("${kafka.topic.project-events:project-events}")
+    private String projectEventsTopic;
+
+    // Constructor injection
+    public ProjectService(ProjectRepository projectRepository,
+                          ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate) {
+        this.projectRepository = projectRepository;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    // ==============================
+    // Read operations (No changes needed)
+    // ==============================
+    public Flux<ProjectDto> getAllProjects() {
+        return projectRepository.findAll().map(ProjectUtils::entityToDto);
+    }
+
+    public Flux<ProjectDto> getProjectByName(String name) {
+        return projectRepository.findByName(name).map(ProjectUtils::entityToDto);
+    }
+
+    public Mono<ProjectDto> getProjectById(String id) {
+        return projectRepository.findById(id).map(ProjectUtils::entityToDto);
+    }
+
+    public Flux<ProjectDto> getProjectByCreatedBy(String owner) {
+        return projectRepository.findByCreatedBy(owner).map(ProjectUtils::entityToDto);
+    }
+
+    public Flux<ProjectDto> getProjectsByStatus(ProjectStatus status) {
+        return projectRepository.findByStatus(status)
+                .map(ProjectUtils::entityToDto);
+    }
+
+    // ==============================
+    // Get all tasks for a project (with event publishing)
+    // ==============================
+    public Flux<String> getAllTaskIdsByProjectId(String projectId) {
+        return projectRepository.findById(projectId)
+                .flatMapMany(project -> {
+                    if (project.getTaskIds() == null || project.getTaskIds().isEmpty()) {
+                        return Flux.empty();
+                    }
+                    return Flux.fromIterable(project.getTaskIds());
+                });
+    }
+
+    // ==============================
+    // Create a task for a specific project
+    // ==============================
+    public Mono<TaskDto> createTaskForProject(String projectId, TaskDto taskDto) {
+        TaskDto taskToCreate = TaskDto.builder()
+                .id(taskDto.getId())
+                .name(taskDto.getName())
+                .status(taskDto.getStatus())
+                .priority(taskDto.getPriority())
+                .description(taskDto.getDescription())
+                .createdBy(taskDto.getCreatedBy())
+                .createdAt(taskDto.getCreatedAt())
+                .updatedBy(taskDto.getUpdatedBy())
+                .updatedAt(taskDto.getUpdatedAt())
+                .dueDate(taskDto.getDueDate())
+                .assigneeId(taskDto.getAssigneeId())
+                .assigneeName(taskDto.getAssigneeName())
+                .tags(taskDto.getTags())
+                .attachments(taskDto.getAttachments())
+                .version(taskDto.getVersion())
+                .projectId(projectId)
+                .build();
+
+        // 1. Persist the task in the real task microservice
+        return taskServiceWebClient.post()
+                .uri("")
+                .bodyValue(taskToCreate)
+                .retrieve()
+                .bodyToMono(TaskDto.class)
+                .flatMap(createdTask ->
+                        // 2. Add the created task's ID to the project
+                        projectRepository.findById(projectId)
+                                .flatMap(project -> {
+                                    project.getTaskIds().add(createdTask.getId());
+                                    return projectRepository.save(project)
+                                            .thenReturn(createdTask);
+                                })
+                                // 3. Publish event after both task creation and project update
+                                .doOnSuccess(savedTask -> publishProjectTaskCreatedEvent(savedTask, projectId))
+                );
+    }
+
+    private void publishProjectTaskCreatedEvent(TaskDto createdTask, String projectId) {
+        try {
+            // You may want to create a ProjectTaskCreatedEventPayload in your contracts
+            ProjectTaskCreatedEventPayload payload = new ProjectTaskCreatedEventPayload(createdTask, projectId);
+            EventEnvelope<ProjectTaskCreatedEventPayload> envelope = new EventEnvelope<>(
+                    "N/A-project-task-create",
+                    ProjectTaskCreatedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectTaskCreatedEvent envelope for projectId: {} and taskId: {}", projectId, createdTask.getId());
+            kafkaTemplate.send(projectEventsTopic, projectId, envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectTaskCreatedEvent envelope for projectId: {}", projectId, e))
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectTaskCreatedEvent for projectId: {}", projectId, e);
+        }
+    }
+
+    // ==============================
+    // Write operations (Transformed)
+    // ==============================
+
+    public Mono<ProjectDto> createProject(ProjectDto projectDto) {
+        // Use deferContextual to access Reactor Context
+        return Mono.deferContextual(contextView -> {
+            Project projectEntity = ProjectUtils.dtoToEntity(projectDto);
+            // Set defaults if needed (e.g., creation date, initial status)
+            return projectRepository.save(projectEntity)
+                    .doOnSuccess(createdProject -> publishProjectCreatedEvent(createdProject, contextView)) // Publish event
+                    .map(ProjectUtils::entityToDto); // Map to DTO for response
+        });
+    }
+
+    public Mono<ProjectDto> updateProject(String id, ProjectDto projectDto) {
+        // Use deferContextual to access Reactor Context
+        return Mono.deferContextual(contextView ->
+                projectRepository.findById(id)
+                        .flatMap(existingProject -> {
+                            // Update fields from DTO
+                            existingProject.setName(projectDto.getName());
+                            existingProject.setDescription(projectDto.getDescription());
+                            existingProject.setCreatedBy(projectDto.getCreatedBy()); // Or maybe update modifiedBy?
+                            existingProject.setAssignedTo(projectDto.getAssignedTo());
+                            existingProject.setStartDate(projectDto.getStartDate());
+                            existingProject.setEndDate(projectDto.getEndDate());
+                            existingProject.setMemberIds(projectDto.getMemberIds());
+                            existingProject.setPriority(projectDto.getPriority());
+                            // Set updated timestamp etc.
+                            return projectRepository.save(existingProject)
+                                    .doOnSuccess(updatedProject -> publishProjectUpdatedEvent(updatedProject, contextView)); // Publish event
+                        })
+                        .map(ProjectUtils::entityToDto) // Map to DTO for response
+                        .switchIfEmpty(Mono.error(new RuntimeException("Project not found for update: " + id))) // Handle not found
+        );
+    }
+
+    public Mono<ProjectDto> updateProjectStatus(String projectId, ProjectStatus newStatus, Long expectedVersion) {
+        return projectRepository.findById(projectId)
+                .flatMap(project -> {
+                    if (expectedVersion != null && !expectedVersion.equals(project.getVersion())) {
+                        return Mono.error(new RuntimeException("Version mismatch for project " + projectId));
+                    }
+                    boolean statusChanged = !project.getStatus().equals(newStatus);
+                    project.setStatus(newStatus);
+                    return projectRepository.save(project)
+                            .map(ProjectUtils::entityToDto)
+                            .doOnSuccess(updatedDto -> {
+                                if (statusChanged) {
+                                    publishProjectStatusChangedEvent(updatedDto);
+                                }
+                            });
+                });
+    }
+
+    private void publishProjectStatusChangedEvent(ProjectDto projectDto) {
+        try {
+            ProjectStatusChangedEventPayload payload = new ProjectStatusChangedEventPayload(projectDto);
+            EventEnvelope<ProjectStatusChangedEventPayload> envelope = new EventEnvelope<>(
+                    "N/A-status-change",
+                    ProjectStatusChangedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectStatusChangedEvent envelope for projectId: {}", projectDto.getId());
+            kafkaTemplate.send(projectEventsTopic, projectDto.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectStatusChangedEvent envelope for projectId: {}", projectDto.getId(), e))
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectStatusChangedEvent for projectId: {}", projectDto.getId(), e);
+        }
+    }
+
+    public Mono<ProjectDto> updateProjectCombined(String id, ProjectDto dto) {
+        return projectRepository.findById(id)
+                .flatMap(project -> {
+                    boolean statusChanged = !project.getStatus().equals(dto.getStatus());
+                    // Update all fields except id
+                    project.setName(dto.getName());
+                    project.setDescription(dto.getDescription());
+                    project.setStatus(dto.getStatus());
+                    project.setCreatedBy(dto.getCreatedBy());
+                    project.setAssignedTo(dto.getAssignedTo());
+                    project.setStartDate(dto.getStartDate());
+                    project.setEndDate(dto.getEndDate());
+                    // Do not update version directly (handled by Mongo)
+                    return projectRepository.save(project)
+                            .map(ProjectUtils::entityToDto)
+                            .doOnSuccess(updatedDto -> {
+                                if (statusChanged) {
+                                    publishProjectStatusChangedEvent(updatedDto);
+                                }
+                                publishProjectUpdatedEvent(updatedDto);
+                            });
+                });
+    }
+
+    private void publishProjectUpdatedEvent(ProjectDto projectDto) {
+        try {
+            ProjectUpdatedEventPayload payload = new ProjectUpdatedEventPayload(projectDto);
+            EventEnvelope<ProjectUpdatedEventPayload> envelope = new EventEnvelope<>(
+                    "N/A-project-update",
+                    ProjectUpdatedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectUpdatedEvent envelope for projectId: {}", projectDto.getId());
+            kafkaTemplate.send(projectEventsTopic, projectDto.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectUpdatedEvent envelope for projectId: {}", projectDto.getId(), e))
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectUpdatedEvent for projectId: {}", projectDto.getId(), e);
+        }
+    }
+
+    // Note: Original returned Mono<ProjectDto>, keeping that signature
+    public Mono<Void> deleteProject(String id) {
+        // Use deferContextual to access Reactor Context
+        return Mono.deferContextual(contextView ->
+                projectRepository.findById(id)
+                        .flatMap(projectToDelete ->
+                                // Delete, then pass the original project data onward
+                                projectRepository.deleteById(id).thenReturn(projectToDelete)
+                        )
+                        .doOnSuccess(deletedProject -> publishProjectDeletedEvent(deletedProject, contextView)) // Publish event using data before deletion
+                        .then() // Map the (now deleted) project data to DTO for response
+                        .switchIfEmpty(Mono.error(new RuntimeException("Project not found for deletion: " + id))) // Handle not found
+        );
+    }
+
+
+    // ==============================
+    // Event Publishing Helper Methods
+    // ==============================
+
+    private void publishProjectCreatedEvent(Project createdProject, ContextView contextView) {
+        String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-proj-create");
+        try {
+            // 1. Map domain entity to shared DTO
+            ProjectDto projectDto = ProjectUtils.entityToDto(createdProject);
+
+            // 2. Create specific event payload using the DTO
+            ProjectCreatedEventPayload payload = new ProjectCreatedEventPayload(projectDto);
+
+            // 3. Create the envelope
+            EventEnvelope<ProjectCreatedEventPayload> envelope = new EventEnvelope<>(
+                    correlationId,
+                    ProjectCreatedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+
+            log.info("Publishing ProjectCreatedEvent envelope. CorrID: {}", correlationId);
+
+            // 4. Publish the envelope
+            kafkaTemplate.send(projectEventsTopic, createdProject.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectCreatedEvent envelope. CorrID: {}", correlationId, e))
+                    .subscribe(); // Subscribe to trigger send
+
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectCreatedEvent. CorrID: {}", correlationId, e);
+        }
+    }
+
+    private void publishProjectUpdatedEvent(Project updatedProject, ContextView contextView) {
+        String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-proj-update");
+        try {
+            // 1. Map domain entity to shared DTO
+            ProjectDto projectDto = ProjectUtils.entityToDto(updatedProject);
+
+            // 2. Create specific event payload using the DTO
+            ProjectUpdatedEventPayload payload = new ProjectUpdatedEventPayload(projectDto);
+
+            // 3. Create the envelope
+            EventEnvelope<ProjectUpdatedEventPayload> envelope = new EventEnvelope<>(
+                    correlationId,
+                    ProjectUpdatedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+
+            log.info("Publishing ProjectUpdatedEvent envelope. CorrID: {}", correlationId);
+
+            // 4. Publish the envelope
+            kafkaTemplate.send(projectEventsTopic, updatedProject.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectUpdatedEvent envelope. CorrID: {}", correlationId, e))
+                    .subscribe(); // Subscribe to trigger send
+
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectUpdatedEvent. CorrID: {}", correlationId, e);
+        }
+    }
+
+    private void publishProjectDeletedEvent(Project deletedProject, ContextView contextView) {
+        String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-proj-delete");
+        try {
+            // 1. Create specific event payload (only needs IDs/name usually)
+            ProjectDto projectDto = ProjectUtils.entityToDto(deletedProject);
+
+            ProjectDeletedEventPayload payload = new ProjectDeletedEventPayload(projectDto);
+
+            // 2. Create the envelope
+            EventEnvelope<ProjectDeletedEventPayload> envelope = new EventEnvelope<>(
+                    correlationId,
+                    ProjectDeletedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+
+            log.info("Publishing ProjectDeletedEvent envelope. CorrID: {}", correlationId);
+
+            // 3. Publish the envelope (use project ID as Kafka key)
+            kafkaTemplate.send(projectEventsTopic, deletedProject.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectDeletedEvent envelope. CorrID: {}", correlationId, e))
+                    .subscribe(); // Subscribe to trigger send
+
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectDeletedEvent. CorrID: {}", correlationId, e);
+        }
+    }
+
+}

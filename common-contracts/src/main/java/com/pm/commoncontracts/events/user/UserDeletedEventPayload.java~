@@ -1,0 +1,7 @@
+package com.commoncontracts.events.user;
+
+import com.commoncontracts.dto.UserDto;
+
+public record UserDeletedEventPayload(UserDto userDto) {
+    public static final String EVENT_TYPE = "USER_DELETED";
+}

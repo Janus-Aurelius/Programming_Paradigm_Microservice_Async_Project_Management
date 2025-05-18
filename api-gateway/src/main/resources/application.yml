@@ -1,0 +1,80 @@
+# Entry point port
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "http://localhost:4200" # Allow requests from Angular app
+            allowedMethods: "*"
+
+            allowedHeaders: "*"
+            exposedHeaders: "*"
+
+            maxAge: 3600
+
+      routes:
+        - id: websocket_service_route
+          uri: ws://websocket-service:8084 # Route to websocket-service using ws scheme
+          predicates:
+            - Path=/ws/updates/** # Match the path defined in websocket-service config
+
+
+        - id: project_service_route
+          #uri: lb://project-service # Use service name if using service discovery, or direct URL for now
+          # For direct URL without service discovery:
+          uri: http://project-service:8082
+          predicates:
+            - Path=/api/projects/** # Route requests starting with /api/projects
+          filters:
+            - StripPrefix=1         # Remove /api prefix before forwarding
+
+        - id: task_service_route
+          #uri: lb://task-service
+          # For direct URL without service discovery:
+          uri: http://task-service:8081
+          predicates:
+            - Path=/api/tasks/** # Route requests starting with /api/tasks
+          filters:
+            - StripPrefix=1        # Remove /api prefix
+
+jwt:
+  secret: my-very-secret-key-for-jwt-signing
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.apigateway: DEBUG
+    reactor.kafka.sender: INFO # Added for Kafka sender logging
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n" # Added logging pattern
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev

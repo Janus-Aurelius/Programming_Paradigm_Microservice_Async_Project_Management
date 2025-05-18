@@ -1,0 +1,91 @@
+server:
+  port: 8086 # Assigning port 8086
+  servlet:
+    context-path: /api/notifications # Setting context path
+
+spring:
+  application:
+    name: notification-service
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/notificationdb # Default to docker profile DB
+  main:
+    allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: kafka:9092 # Default to docker profile Kafka
+    # --- Kafka Consumer Configuration ---
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      group-id: notification-service-group # Unique consumer group
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+      properties:
+        spring.json.trusted.packages: "com.pm.commoncontracts.*" # No leading space
+        spring.json.use.type.headers: true # Explicitly enable type headers
+        spring.json.value.default.type: "com.pm.commoncontracts.envelope.EventEnvelope" # Base type for deserialization
+    # --- Kafka Producer Configuration ---
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: true # Ensure type info is included in headers
+        spring.json.type.mapping: eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope # Type mapping alias
+
+
+kafka:
+  topic:
+    # Define topics this service listens to (adjust as needed)
+    project-events: project-events
+    task-events: task-events
+    user-events: user-events
+    comment-events: comment-events
+
+    #outgoing
+    notification-dispatch: notifications-to-send
+    # Add other topics if necessary
+
+services:
+  user-service:
+    url: http://user-service:8084
+  task-service:
+    url: http://task-service:8084
+  project-service:
+    url: http://project-service:8082
+  comment-service:
+    url: http://comment-service:8088
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.notificationservice: DEBUG # Set specific package log level
+    reactor.kafka.sender: INFO # Added for Kafka sender logging
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n" # Added logging pattern
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*" # Expose all actuator endpoints
+
+---
+# Docker Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: docker
+  # MongoDB and Kafka URIs are already set for docker by default above
+
+---
+# Development Profile Configuration
+spring:
+  config:
+    activate:
+      on-profile: dev
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/notificationdb # Local MongoDB for dev
+  kafka:
+    bootstrap-servers: localhost:9092 # Local Kafka for dev

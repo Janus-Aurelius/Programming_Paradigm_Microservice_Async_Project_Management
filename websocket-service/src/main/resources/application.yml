@@ -1,0 +1,65 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /ws # Corrected context path, assuming you meant /ws
+
+spring:
+  application:
+    name: websocket-service
+  main:
+    allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: kafka:9092 # Default for docker profile
+    consumer:
+      group-id: websocket-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "com.pm.commoncontracts.*" # Ensure no leading space
+        spring.json.use.type.headers: true # Explicitly enable type headers (default value but good to be explicit)
+        spring.json.value.default.type: com.pm.commoncontracts.envelope.EventEnvelope # Base type for deserialization
+        spring.json.type.mapping: eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope # Type mapping alias
+
+    # Define the topics this service will LISTEN to
+    topic:
+      # This is an outgoing topic or a general event topic, not specific to notifications yet
+      ws-events: ws-events
+
+      # ADD THE NOTIFICATION DISPATCH TOPIC HERE
+      notification-dispatch: notifications-to-send # Must match the name used in NotificationService's output
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.websocketservice: DEBUG
+    reactor.kafka.sender: INFO
+    org.apache.kafka: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  # kafka.bootstrap-servers is already set above and will be used by docker profile by default.
+  # You only need to override it here if it's different for docker.
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  kafka:
+    bootstrap-servers: localhost:9092 # Override for dev profile
+    # If topic names are different in dev, override them here too:
+    # topic:
+    #   notification-dispatch: dev-notifications-for-delivery

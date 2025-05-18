@@ -1,0 +1,151 @@
+services:
+  mongo:
+    image: mongo:5
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+  kafka:
+    image: bitnami/kafka:3.4.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      # --- KRaft Mode Configuration ---
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER # Explicitly name the controller listener
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT # Good practice
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093 # Node 1 at kafka:9093
+
+      # --- Cluster ID (Generated in Step 2) ---
+      - KAFKA_KRAFT_CLUSTER_ID=pbaqgy9HSgyg6xYWPX020A
+
+      # --- Log Directories ---
+      - KAFKA_CFG_LOG_DIRS=/bitnami/kafka/data
+
+      # --- General Kafka Settings for single node ---
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_NUM_PARTITIONS=1
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=1
+
+      # --- Bitnami Specific ---
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - project_management_default # Or your custom network name
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 120s # Increased for KRaft
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - project-service
+      - task-service
+      - websocket-service
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: user-service
+    ports:
+      - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - mongo
+      - kafka
+
+  project-service:
+    build:
+      context: .
+      dockerfile: project-service/Dockerfile
+    container_name: project-service
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - mongo
+      - kafka
+
+  task-service:
+    build:
+      context: .
+      dockerfile: task-service/Dockerfile
+    container_name: task-service
+    ports:
+      - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - mongo
+      - kafka
+
+  websocket-service:
+    build:
+      context: .
+      dockerfile: websocket-service/Dockerfile
+    container_name: websocket-service
+    ports:
+      - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: notification-service
+    ports:
+      - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      mongo:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+
+  comment-service:
+    build:
+      context: .
+      dockerfile: comment-service/Dockerfile
+    container_name: comment-service
+    ports:
+      - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - mongo
+      - kafka
+
+volumes:
+  mongo_data:
+  kafka_data:
+
+networks:
+  project_management_default:
+    driver: bridge

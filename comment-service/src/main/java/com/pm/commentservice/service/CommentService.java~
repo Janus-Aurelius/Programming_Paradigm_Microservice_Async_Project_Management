@@ -1,0 +1,153 @@
+package com.pm.commentservice.service;
+
+import com.pm.commentservice.model.Comment;
+import com.pm.commentservice.repository.CommentRepository;
+import com.pm.commentservice.utils.CommentUtils;
+import com.commoncontracts.domain.ParentType;
+import com.commoncontracts.dto.CommentDto;
+import com.commoncontracts.envelope.EventEnvelope;
+import com.commoncontracts.events.comment.CommentAddedEventPayload;
+import com.commoncontracts.events.comment.CommentDeletedEventPayload;
+import com.commoncontracts.events.comment.CommentEditedEventPayload;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Pageable;
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import java.time.Instant;
+
+@Service
+public class CommentService {
+    private final CommentRepository commentRepository;
+    private final ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaProducerTemplate;
+    private final String commentEventsTopic;
+    private final String serviceName;
+
+    public CommentService(CommentRepository commentRepository,
+                         ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaProducerTemplate,
+                         @Value("${kafka.topic.comment-events}") String commentEventsTopic,
+                         @Value("${spring.application.name}") String serviceName) {
+        this.commentRepository = commentRepository;
+        this.kafkaProducerTemplate = kafkaProducerTemplate;
+        this.commentEventsTopic = commentEventsTopic;
+        this.serviceName = serviceName;
+    }
+
+    public Flux<CommentDto> getAllComments(Pageable pageable) {
+        return commentRepository.findAll(pageable)
+                .map(CommentUtils::entityToDto);
+    }
+
+    // Create a new top-level comment for a project or task
+    public Mono<CommentDto> createComment(CommentDto dto, String correlationId) {
+        if (!StringUtils.hasText(dto.getParentId())) {
+            return Mono.error(new IllegalArgumentException("Parent ID must be provided"));
+        }
+        if (dto.getParentType() == null) {
+            return Mono.error(new IllegalArgumentException("Parent type must be provided"));
+        }
+
+        Comment comment = new Comment();
+        comment.setContent(dto.getContent());
+        comment.setUserId(dto.getAuthorId());
+        comment.setParentId(dto.getParentId());
+        comment.setParentType(dto.getParentType());
+        comment.setCreatedAt(Instant.now());
+        comment.setUpdatedAt(comment.getCreatedAt());
+
+        return commentRepository.save(comment)
+                .map(CommentUtils::entityToDto)
+                .flatMap(savedDto -> publishCommentCreatedEvent(savedDto, correlationId)
+                        .thenReturn(savedDto));
+    }
+
+    // Create a reply to an existing comment
+    public Mono<CommentDto> createReply(String parentCommentId, CommentDto replyDto, String correlationId) {
+        if (!StringUtils.hasText(parentCommentId)) {
+            return Mono.error(new IllegalArgumentException("Parent comment ID must be provided"));
+        }
+
+        // First verify that the parent comment exists
+        return commentRepository.findById(parentCommentId)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Parent comment not found")))
+                .flatMap(parentComment -> {
+                    // Create the reply
+                    Comment reply = new Comment();
+                    reply.setContent(replyDto.getContent());
+                    reply.setUserId(replyDto.getAuthorId());
+                    reply.setParentId(parentCommentId);
+                    reply.setParentType(ParentType.COMMENT); // This is a reply, so parent type is always COMMENT
+                    reply.setCreatedAt(Instant.now());
+                    reply.setUpdatedAt(reply.getCreatedAt());
+                    
+                    return commentRepository.save(reply)
+                            .map(CommentUtils::entityToDto)
+                            .flatMap(savedDto -> publishCommentCreatedEvent(savedDto, correlationId)
+                                    .thenReturn(savedDto));
+                });
+    }
+
+    // Get comments for a project or task
+    public Flux<CommentDto> getCommentsForParent(String parentId, ParentType parentType) {
+        if (!StringUtils.hasText(parentId)) {
+            return Flux.error(new IllegalArgumentException("Parent ID must be provided"));
+        }
+        return commentRepository.findByParentIdAndParentTypeOrderByCreatedAtAsc(parentId, parentType)
+                .map(CommentUtils::entityToDto);
+    }
+
+    // Get replies for a specific comment
+    public Flux<CommentDto> getRepliesForComment(String parentCommentId) {
+        if (!StringUtils.hasText(parentCommentId)) {
+            return Flux.error(new IllegalArgumentException("Parent comment ID must be provided"));
+        }
+
+        return commentRepository.findByParentIdAndParentTypeOrderByCreatedAtAsc(
+                parentCommentId, ParentType.COMMENT)
+                .map(CommentUtils::entityToDto);
+    }
+
+    public Mono<CommentDto> updateComment(String commentId, String newContent, String correlationId) {
+        return commentRepository.findById(commentId)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Comment not found")))
+                .flatMap(comment -> {
+                    comment.setContent(newContent);
+                    comment.setUpdatedAt(Instant.now());
+                    return commentRepository.save(comment);
+                })
+                .map(CommentUtils::entityToDto)
+                .flatMap(updatedDto -> publishCommentEditedEvent(updatedDto, correlationId).thenReturn(updatedDto));
+    }
+
+    public Mono<Void> deleteComment(String commentId, String correlationId) {
+        return commentRepository.findById(commentId)
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Comment not found")))
+                .flatMap(comment -> {
+                    // First delete all replies to this comment
+                    return commentRepository.findByParentIdAndParentTypeOrderByCreatedAtAsc(commentId, ParentType.COMMENT)
+                            .flatMap(reply -> deleteComment(reply.getId(), correlationId))
+                            .then(commentRepository.delete(comment))
+                            .then(publishCommentDeletedEvent(CommentUtils.entityToDto(comment), correlationId));
+                });
+    }
+
+    private Mono<Void> publishCommentCreatedEvent(CommentDto commentDto, String correlationId) {
+        var payload = new CommentAddedEventPayload(commentDto);
+        var envelope = new EventEnvelope<>(correlationId, CommentAddedEventPayload.EVENT_TYPE, serviceName, payload);
+        return kafkaProducerTemplate.send(commentEventsTopic, commentDto.getId(), envelope).then();
+    }
+
+    private Mono<Void> publishCommentEditedEvent(CommentDto commentDto, String correlationId) {
+        var payload = new CommentEditedEventPayload(commentDto);
+        var envelope = new EventEnvelope<>(correlationId, CommentEditedEventPayload.EVENT_TYPE, serviceName, payload);
+        return kafkaProducerTemplate.send(commentEventsTopic, commentDto.getId(), envelope).then();
+    }
+
+    private Mono<Void> publishCommentDeletedEvent(CommentDto commentDto, String correlationId) {
+        var payload = new CommentDeletedEventPayload(commentDto);
+        var envelope = new EventEnvelope<>(correlationId, CommentDeletedEventPayload.EVENT_TYPE, serviceName, payload);
+        return kafkaProducerTemplate.send(commentEventsTopic, commentDto.getId(), envelope).then();
+    }
+}

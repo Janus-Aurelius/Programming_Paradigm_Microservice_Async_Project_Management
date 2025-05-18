@@ -1,0 +1,54 @@
+server:
+  port: 8085
+  servlet:
+    context-path: /ws
+
+spring:
+  application:
+    name: websocket-service
+  main:
+    allow-bean-definition-overriding: true
+  kafka:
+    bootstrap-servers: kafka:9092
+    topic:
+      ws-events: ws-events
+    consumer:
+      group-id: websocket-group # Consumer group ID
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer # Matches Java config
+      auto-offset-reset: earliest # Start reading from beginning of topic on first run
+      properties:
+         spring.json.trusted.packages: " com.pm.commoncontracts.*"  # (Handled in Java config, can be set here if needed)
+
+# Note: Advanced deserialization and trusted packages are configured in KafkaConsumerConfig.java
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    com.pm.websocketservice: DEBUG
+    reactor.kafka.sender: INFO # Added for Kafka sender logging
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n" # Added logging pattern
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: kafka:9092
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  kafka:
+    bootstrap-servers: localhost:9092

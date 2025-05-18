@@ -1,0 +1,28 @@
+package com.pm.notificationservice.config;
+
+import org.springframework.beans.factory.annotation.Value;
+// import org.springframework.cloud.client.loadbalancer.LoadBalanced; // Add if using Service Discovery
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.reactive.function.client.WebClient;
+
+@Configuration
+public class WebClientConfig {
+
+    @Value("${services.user-service.url}") // Get base URL from application.yml
+    private String userServiceBaseUrl;
+
+    @Bean
+    // @LoadBalanced // Uncomment this if using Service Discovery + spring-cloud-starter-loadbalancer
+    public WebClient.Builder webClientBuilder() {
+        return WebClient.builder();
+    }
+
+    @Bean // Specific WebClient instance for user-service
+    @Qualifier("userWebClient")
+    public WebClient userWebClient(WebClient.Builder webClientBuilder) {
+        return webClientBuilder
+                .baseUrl(userServiceBaseUrl) // Set the base URL
+                .build();
+    }
+}

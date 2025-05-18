@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- === INHERIT FROM SPRING BOOT === -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!-- Downgrade to Spring Boot 3.2.x for Spring Cloud compatibility -->
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    <!-- === END INHERIT FROM SPRING BOOT === -->
+
+    <!-- Define coordinates for YOUR parent project -->
+    <groupId>com.pm</groupId>
+    <artifactId>project-management-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version> <!-- Your overall project version -->
+    <packaging>pom</packaging> <!-- Must be pom -->
+
+    <name>Project Management System (Parent)</name>
+    <description>Parent POM for the Distributed Project Management System</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <kafka.version>3.6.1</kafka.version> <!-- Added Kafka client version -->
+        <lombok.version>1.18.38</lombok.version> <!-- Added Lombok version -->
+        <!-- Add other common properties if needed -->
+        <!-- e.g., <mapstruct.version>1.5.5.Final</mapstruct.version> -->
+    </properties>
+
+    <!-- List ALL your modules (directory names) -->
+    <modules>
+        <module>common-contracts</module>
+        <module>api-gateway</module>
+        <module>project-service</module>
+        <module>task-service</module>
+        <module>websocket-service</module>
+        <module>user-service</module>
+        <module>notification-service</module>
+        <module>comment-service</module>
+        <module>common-security</module>
+
+        <!-- Add any other service modules -->
+    </modules>
+
+    <!-- Optional: Define common dependency versions here using dependencyManagement -->
+    <!-- These versions will be inherited by child modules -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Example: Manage version for your own shared modules -->
+            <dependency>
+                <groupId>com.pm</groupId>
+                <artifactId>common-contracts</artifactId>
+                <version>${project.version}</version> <!-- Use the parent's version -->
+            </dependency>
+            <dependency>
+                <groupId>com.pm</groupId>
+                <artifactId>common-web-support</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>2023.0.2</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- You generally DON'T need to repeat Spring Boot managed dependencies here -->
+            <!-- The spring-boot-starter-parent BOM handles that -->
+
+            <!-- Manage Lombok version centrally -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+
+            <!-- Security: Force safe versions for vulnerable dependencies -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-common</artifactId>
+                <version>4.1.110.Final</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-handler</artifactId>
+                <version>4.1.110.Final</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context</artifactId>
+                <version>6.1.8</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-web</artifactId>
+                <version>6.1.8</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-webflux</artifactId>
+                <version>6.1.8</version>
+            </dependency>
+            <dependency>
+                <groupId>net.minidev</groupId>
+                <artifactId>json-smart</artifactId>
+                <version>2.5.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.xmlunit</groupId>
+                <artifactId>xmlunit-core</artifactId>
+                <version>2.9.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>3.7.0</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-metadata</artifactId>
+                <version>3.7.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+</project>
