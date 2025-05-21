@@ -169,7 +169,11 @@ public class TaskService {
                             // Apply all changes
                             task.setName(dto.getName());
                             task.setDescription(dto.getDescription());
-                            task.setDueDate(dto.getDueDate());
+                            if (dto.getDueDate() != null) {
+                                task.setDueDate(dto.getDueDate().toInstant());
+                            } else {
+                                task.setDueDate(null);
+                            }
                             task.setPriority(dto.getPriority());
                             task.setAssigneeId(dto.getAssigneeId());
                             task.setStatus(dto.getStatus());
@@ -446,3 +450,4 @@ public class TaskService {
                 });
     }
 }
+

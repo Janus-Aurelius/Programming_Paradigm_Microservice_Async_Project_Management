@@ -101,10 +101,23 @@ public class UserService {
                     .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
                 )
                 .flatMap(user -> {
-                    user.setName(dto.getName());
                     user.setEmail(dto.getEmail());
-                    user.setPassword(dto.getPassword());
-                    user.setRole(dto.getRole());
+                    // Only update passwordHash if a new password is provided
+                    if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+                        user.setPasswordHash(hashPassword(dto.getPassword())); // Implement hashPassword
+                    }
+                    // Update roles
+                    if (dto.getRoles() != null && !dto.getRoles().isEmpty()) {
+                        user.setRoles(dto.getRoles());
+                    } else if (dto.getRole() != null) {
+                        user.setRoles(java.util.List.of(dto.getRole()));
+                    }
+                    user.setFirstName(dto.getFirstName());
+                    user.setLastName(dto.getLastName());
+                    user.setEnabled(dto.isEnabled());
+                    user.setLocked(dto.isLocked());
+                    user.setProfilePictureUrl(dto.getProfilePictureUrl());
+                    // ...other fields as needed
                     return repository.save(user);
                 })
                 .flatMap(saved -> {
@@ -113,7 +126,7 @@ public class UserService {
                     EventEnvelope<UserUpdatedEventPayload> envelope = new EventEnvelope<>(corr, UserUpdatedEventPayload.EVENT_TYPE, serviceName, payload);
                     return sendEvent(saved.getId(), envelope).thenReturn(saved);
                 })
-                .map(UserUtils::entityToDto) // Explicit cast
+                .map(UserUtils::entityToDto)
         );
     }
 
@@ -149,10 +162,10 @@ public class UserService {
             repository.findById(id)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
                 .flatMap(user -> {
-                    if (newPassword == null || newPassword.equals(user.getPassword())) {
+                    if (newPassword == null || newPassword.isBlank() || newPassword.equals(user.getPasswordHash())) {
                         return Mono.empty(); // No change
                     }
-                    user.setPassword(newPassword);
+                    user.setPasswordHash(hashPassword(newPassword)); // Implement hashPassword
                     return repository.save(user);
                 })
                 .flatMap(saved -> {
@@ -179,5 +192,11 @@ public class UserService {
                 })
                 .map(UserUtils::entityToDto) // Explicit cast
         );
+    }
+
+    // Placeholder for password hashing logic
+    private String hashPassword(String rawPassword) {
+        // TODO: Replace with your actual password hashing implementation (e.g., BCrypt)
+        return "HASHED_" + rawPassword;
     }
 }

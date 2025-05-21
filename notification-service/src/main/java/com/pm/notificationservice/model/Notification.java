@@ -1,119 +1,102 @@
 package com.pm.notificationservice.model;
 
+import com.pm.commoncontracts.domain.NotificationChannel;
+import com.pm.commoncontracts.domain.ParentType; // Assuming ParentType is suitable here
+// Or define a specific NotificationEntityType if ParentType is too broad/not fitting
+import com.pm.commoncontracts.events.notification.*; // Assuming this is the location
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 
 @Document(collection = "notifications")
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class Notification {
+
+    public static Object NotificationChannel;
     @Id
     private String id;
+
+    /* ---------- routing & context ---------- */
+    @NotBlank
+    @Indexed
     private String recipientUserId;
-    private String eventType;
-    private String message;
-    private String entityType;
-    private String entityId;
-    private NotificationChannel channel;
-    private String createdAt;
-    private boolean isRead;
-    private LocalDateTime timestamp;
 
-    public Notification() {}
+    @NotNull
+    private NotificationEvent event; // enum, e.g. TASK_ASSIGNED, COMMENT_ADDED
 
-    public Notification(String recipientUserId, String eventType, String message, 
-            String entityType, String entityId, NotificationChannel channel) {
-        this.recipientUserId = recipientUserId;
-        this.eventType = eventType;
-        this.message = message;
-        this.entityType = entityType;
-        this.entityId = entityId;
-        this.channel = channel;
-        this.createdAt = java.time.Instant.now().toString();
-        this.isRead = false;
-    }
+    @NotNull
+    private ParentType entityType; // PROJECT, TASK, COMMENT … (ensure ParentType enum covers all cases)
+    // Or create a more specific NotificationEntityType enum
 
-    public LocalDateTime getTimestamp() {
-        return timestamp;
-    }
-    public void setTimestamp(LocalDateTime timestamp) {
-        this.timestamp = timestamp;
-    }
+    @NotBlank
+    private String entityId; // ID of the entity that triggered the event
 
-    public String getId() {
-        return id;
-    }
+    /* ---------- delivery ---------- */
+    @NotNull
+    private NotificationChannel channel; // WEBSOCKET, EMAIL, PUSH …
 
-    public void setId(String id) {
-        this.id = id;
-    }
+    @Builder.Default
+    private Map<String, Object> payload = new HashMap<>(); // channel-specific extras (optional)
 
-    public String getRecipientUserId() {
-        return recipientUserId;
-    }
+    /* ---------- content ---------- */
+    @NotBlank
+    @Size(max = 1024)
+    private String message; // short, user-visible text
 
-    public void setRecipientUserId(String recipientUserId) {
-        this.recipientUserId = recipientUserId;
-    }
+    /* ---------- state ---------- */
+    private boolean read = false; // false = unread
 
-    public String getEventType() {
-        return eventType;
-    }
+    private Instant readAt; // nullable, set when user opens it
 
-    public void setEventType(String eventType) {
-        this.eventType = eventType;
-    }
+    /* ---------- auditing ---------- */
+    @CreatedDate
+    private Instant createdAt;
 
-    public String getMessage() {
-        return message;
-    }
+    // @LastModifiedDate // Notifications are typically immutable once created,
+    // except for 'read' status. If 'read' status changes
+    // trigger @LastModifiedDate, it's fine.
+    // private Instant updatedAt;
 
-    public void setMessage(String message) {
-        this.message = message;
-    }
-
-    public String getEntityType() {
-        return entityType;
-    }
-
-    public void setEntityType(String entityType) {
-        this.entityType = entityType;
-    }
-
-    public String getEntityId() {
-        return entityId;
-    }
-
-    public void setEntityId(String entityId) {
-        this.entityId = entityId;
-    }
-
-    public NotificationChannel getChannel() {
-        return channel;
-    }
-
-    public void setChannel(NotificationChannel channel) {
-        this.channel = channel;
-    }
-
-    public String getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(String createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public boolean isRead() {
-        return isRead;
-    }
-
-    public void setRead(boolean read) {
-        isRead = read;
-    }
-
-    public enum NotificationChannel {
-        WEBSOCKET,
-        EMAIL
-    }
+    @Version
+    private Long version; // optimistic locking
 }
+
+// Enums like NotificationChannel and NotificationEvent should ideally be in common-contracts
+// if they are shared between services (e.g., a service producing an event that leads to a notification,
+// and the notification service consuming it).
+// The image shows events/project/NotificationToSendEventPayload, so NotificationEvent is likely there.
+//
+// Example (ensure these are in your common-contracts if not already):
+// package com.pm.commoncontracts.events;
+// public enum NotificationChannel { WEBSOCKET, EMAIL, PUSH }
+
+// package com.pm.commoncontracts.events;
+// public enum NotificationEvent {
+//     TASK_ASSIGNED,
+//     TASK_STATUS_CHANGED,
+//     TASK_PRIORITY_CHANGED,
+//     TASK_DUE_DATE_CHANGED,
+//     TASK_COMPLETED,
+//     COMMENT_ADDED,
+//     PROJECT_MEMBER_ADDED,
+//     PROJECT_STATUS_CHANGED,
+//     PROJECT_COMPLETED
+//     // etc.
+// }

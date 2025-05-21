@@ -2,6 +2,7 @@ package com.pm.commoncontracts.dto;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,4 +24,9 @@ public class NotificationDto{
         Instant createdAt;
         boolean isRead;
         private LocalDateTime timestamp;
+        String event;
+        Map<String, Object> payload;
+        boolean read;
+        Instant readAt;
+        Long version;
 }

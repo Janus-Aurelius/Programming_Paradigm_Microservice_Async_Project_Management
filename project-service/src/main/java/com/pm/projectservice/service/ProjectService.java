@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service; // Import your event payload reco
 import org.springframework.web.reactive.function.client.WebClient; // Assuming this provides the context key
 
 import com.pm.commoncontracts.domain.ProjectStatus;
+import com.pm.commoncontracts.domain.ProjectPriority;
 import com.pm.commoncontracts.dto.ProjectDto; // Using your existing mapper utility
 import com.pm.commoncontracts.dto.TaskDto; // Your internal domain entity
 import com.pm.commoncontracts.envelope.EventEnvelope;
@@ -25,6 +26,8 @@ import com.pm.projectservice.utils.ProjectUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.context.ContextView;
+
+import java.time.Instant;
 
 @Service
 public class ProjectService {
@@ -126,7 +129,7 @@ public class ProjectService {
                 .assigneeId(taskDto.getAssigneeId())
                 .assigneeName(taskDto.getAssigneeName())
                 .tags(taskDto.getTags())
-                .attachments(taskDto.getAttachments())
+                .attachmentUrls(taskDto.getAttachmentUrls())
                 .version(taskDto.getVersion())
                 .projectId(projectId)
                 .build();
@@ -204,10 +207,18 @@ public class ProjectService {
                             existingProject.setDescription(projectDto.getDescription());
                             existingProject.setCreatedBy(projectDto.getCreatedBy());
                             existingProject.setAssignedTo(projectDto.getAssignedTo());
-                            existingProject.setStartDate(projectDto.getStartDate());
-                            existingProject.setEndDate(projectDto.getEndDate());
+                            if (projectDto.getStartDate() != null) {
+                                existingProject.setStartDate(Instant.parse(projectDto.getStartDate()));
+                            } else {
+                                existingProject.setStartDate(null);
+                            }
+                            if (projectDto.getEndDate() != null) {
+                                existingProject.setEndDate(Instant.parse(projectDto.getEndDate()));
+                            } else {
+                                existingProject.setEndDate(null);
+                            }
                             existingProject.setMemberIds(projectDto.getMemberIds());
-                            existingProject.setPriority(projectDto.getPriority());
+                            existingProject.setPriority(ProjectPriority.valueOf(projectDto.getPriority()));
                             return projectRepository.save(existingProject)
                                     .doOnError(e -> log.error("Error updating project with ID: {}", id, e))
                                     .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project", e)))
@@ -272,8 +283,16 @@ public class ProjectService {
                     project.setStatus(dto.getStatus());
                     project.setCreatedBy(dto.getCreatedBy());
                     project.setAssignedTo(dto.getAssignedTo());
-                    project.setStartDate(dto.getStartDate());
-                    project.setEndDate(dto.getEndDate());
+                    if (dto.getStartDate() != null) {
+                        project.setStartDate(Instant.parse(dto.getStartDate()));
+                    } else {
+                        project.setStartDate(null);
+                    }
+                    if (dto.getEndDate() != null) {
+                        project.setEndDate(Instant.parse(dto.getEndDate()));
+                    } else {
+                        project.setEndDate(null);
+                    }
                     return projectRepository.save(project)
                             .doOnError(e -> log.error("Error updating project combined fields for ID: {}", id, e))
                             .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project combined fields", e)))
@@ -322,7 +341,6 @@ public class ProjectService {
                         .onErrorResume(e -> Mono.error(new RuntimeException("Failed to delete project", e)))
                         .doOnSuccess(deletedProject -> publishProjectDeletedEvent(deletedProject, contextView))
                         .then()
-                        .switchIfEmpty(Mono.error(new RuntimeException("Project not found for deletion: " + id)))
                         .onErrorContinue((throwable, o) -> log.error("Unhandled error in deleteProject, skipping element", throwable))
         );
     }

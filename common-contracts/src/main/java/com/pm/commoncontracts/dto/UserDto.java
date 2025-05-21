@@ -20,6 +20,15 @@ public class UserDto {
     private String role;
     private String firstName;
     private String lastName;
+    private String passwordHash;
+    private java.util.List<String> roles;
+    private boolean enabled;
+    private java.time.Instant createdAt;
+    private java.time.Instant updatedAt;
+    private java.time.Instant lastLogin;
+    private boolean emailVerified;
+    private boolean locked;
+    private String profilePictureUrl;
 
     public UserDto() {}
 
