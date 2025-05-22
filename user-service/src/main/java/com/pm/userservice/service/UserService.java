@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.stereotype.Service;
 
+import com.pm.commoncontracts.domain.UserRole;
 import com.pm.commoncontracts.dto.UserDto;
 import com.pm.commoncontracts.envelope.EventEnvelope;
 import com.pm.commoncontracts.events.user.UserCreatedEventPayload;
@@ -41,7 +42,6 @@ public class UserService {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    // Reactive helper to send Kafka events
     private <T> Mono<Void> sendEvent(String key, EventEnvelope<T> envelope) {
         return kafkaTemplate.send(userEventsTopic, key, envelope)
                 .doOnError(e -> log.error("Failed to send event {}. CorrID: {}", envelope.eventType(), envelope.correlationId(), e))
@@ -50,83 +50,89 @@ public class UserService {
 
     public Flux<UserDto> getUsers() {
         return repository.findAll()
-                .map(UserUtils::entityToDto);
+                .map(UserUtils::toDto);
     }
 
     public Mono<UserDto> getUserById(String id) {
         return repository.findById(id)
-                .map(UserUtils::entityToDto)
-                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)));
+                .map(UserUtils::toDto)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with id: " + id)));
     }
 
     public Mono<UserDto> getUserByEmail(String email) {
         return repository.findByEmail(email)
-                .map(UserUtils::entityToDto)
-                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + email)));
+                .map(UserUtils::toDto)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with email: " + email)));
     }
 
-    public Flux<UserDto> getUsersByRole(String role) {
-        return repository.findByRole(role)
-                .map(UserUtils::entityToDto)
-                .switchIfEmpty(Mono.error(new ResourceNotFoundException("No users found for role: " + role)));
+    public Flux<UserDto> getUsersByRole(UserRole role) {
+        return repository.findByRole(role.name())
+                .map(UserUtils::toDto)
+                .switchIfEmpty(Flux.empty());
     }
 
     public Mono<UserDto> createUser(UserDto userDto) {
         return Mono.deferContextual(ctx ->
-            repository.findByEmail(userDto.getEmail())
-                .flatMap(existing -> Mono.error(new ConflictException("Email already in use: " + userDto.getEmail())))
-                .switchIfEmpty(
-                    repository.insert(UserUtils.dtoToEntity(userDto))
-                        .flatMap(saved -> {
+            repository.findByUsername(userDto.getUsername()).next()
+                .flatMap(existingUser -> Mono.error(new ConflictException("Username already exists: " + userDto.getUsername())))
+                .switchIfEmpty(Mono.defer(() -> repository.findByEmail(userDto.getEmail())
+                    .flatMap(existingUser -> Mono.error(new ConflictException("Email already in use: " + userDto.getEmail())))))
+                .switchIfEmpty(Mono.defer(() -> {
+                    User user = UserUtils.toEntity(userDto);
+                    if (user.getRole() == null) {
+                        user.setRole(UserRole.valueOf("ROLE_USER")); // Use valueOf("ROLE_USER")
+                    }
+                    return repository.insert(user)
+                        .flatMap(savedUser -> {
                             String corr = ctx.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-create");
-                            UserCreatedEventPayload payload = new UserCreatedEventPayload(UserUtils.entityToDto(saved));
+                            UserCreatedEventPayload payload = new UserCreatedEventPayload(UserUtils.toDto(savedUser));
                             EventEnvelope<UserCreatedEventPayload> envelope = new EventEnvelope<>(corr, UserCreatedEventPayload.EVENT_TYPE, serviceName, payload);
-                            return sendEvent(saved.getId(), envelope).thenReturn(saved);
-                        })
-                )
-        ).map(u -> UserUtils.entityToDto((User) u)); // Explicit cast
+                            return sendEvent(savedUser.getId(), envelope).thenReturn(savedUser);
+                        });
+                }))
+                .cast(User.class)
+        ).map(UserUtils::toDto);
     }
 
-    public Mono<UserDto> updateUser(String id, UserDto dto) {
+    public Mono<UserDto> updateUser(String id, UserDto userDto) {
         return Mono.deferContextual(ctx ->
-            // Ensure email is unique (other than current user)
-            repository.findByEmail(dto.getEmail())
-                .flatMap(existing -> {
-                    if (!existing.getId().equals(id)) {
-                        return Mono.error(new ConflictException("Email already in use: " + dto.getEmail()));
+            repository.findById(id)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
+                .flatMap(existingUser -> {
+                    Mono<User> emailConflictCheck = Mono.just(existingUser);
+                    if (userDto.getEmail() != null && !userDto.getEmail().equalsIgnoreCase(existingUser.getEmail())) {
+                        emailConflictCheck = repository.findByEmail(userDto.getEmail())
+                            .flatMap(conflictingUser -> !conflictingUser.getId().equals(id) ? 
+                                Mono.error(new ConflictException("Email already in use: " + userDto.getEmail())) :
+                                Mono.just(existingUser)
+                            )
+                            .switchIfEmpty(Mono.just(existingUser));
                     }
-                    return Mono.empty();
+                    return emailConflictCheck;
                 })
-                .then(repository.findById(id)
-                    .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
-                )
+                .flatMap(existingUser -> {
+                    Mono<User> usernameConflictCheck = Mono.just(existingUser);
+                    if (userDto.getUsername() != null && !userDto.getUsername().equalsIgnoreCase(existingUser.getUsername())) {
+                         usernameConflictCheck = repository.findByUsername(userDto.getUsername()).next()
+                            .flatMap(conflictingUser -> !conflictingUser.getId().equals(id) ? 
+                                Mono.error(new ConflictException("Username already exists: " + userDto.getUsername())) :
+                                Mono.just(existingUser)
+                            )
+                            .switchIfEmpty(Mono.just(existingUser));
+                    }
+                    return usernameConflictCheck;
+                })
                 .flatMap(user -> {
-                    user.setEmail(dto.getEmail());
-                    // Only update passwordHash if a new password is provided
-                    if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
-                        user.setPasswordHash(hashPassword(dto.getPassword())); // Implement hashPassword
-                    }
-                    // Update roles
-                    if (dto.getRoles() != null && !dto.getRoles().isEmpty()) {
-                        user.setRoles(dto.getRoles());
-                    } else if (dto.getRole() != null) {
-                        user.setRoles(java.util.List.of(dto.getRole()));
-                    }
-                    user.setFirstName(dto.getFirstName());
-                    user.setLastName(dto.getLastName());
-                    user.setEnabled(dto.isEnabled());
-                    user.setLocked(dto.isLocked());
-                    user.setProfilePictureUrl(dto.getProfilePictureUrl());
-                    // ...other fields as needed
-                    return repository.save(user);
+                    User userToSave = UserUtils.updateUserFromDto(user, userDto);
+                    return repository.save(userToSave);
                 })
-                .flatMap(saved -> {
+                .flatMap(savedUser -> {
                     String corr = ctx.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-update");
-                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.entityToDto(saved));
+                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.toDto(savedUser));
                     EventEnvelope<UserUpdatedEventPayload> envelope = new EventEnvelope<>(corr, UserUpdatedEventPayload.EVENT_TYPE, serviceName, payload);
-                    return sendEvent(saved.getId(), envelope).thenReturn(saved);
+                    return sendEvent(savedUser.getId(), envelope).thenReturn(savedUser);
                 })
-                .map(UserUtils::entityToDto)
+                .map(UserUtils::toDto)
         );
     }
 
@@ -144,16 +150,16 @@ public class UserService {
                         user.setLastName(profileDto.getLastName());
                         changed = true;
                     }
-                    if (!changed) return Mono.just(user); // No changes
+                    if (!changed) return Mono.just(user);
                     return repository.save(user);
                 })
-                .flatMap(saved -> {
+                .flatMap(savedUser -> {
                     String corr = ctx.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-profile-update");
-                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.entityToDto(saved));
+                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.toDto(savedUser));
                     EventEnvelope<UserUpdatedEventPayload> envelope = new EventEnvelope<>(corr, UserUpdatedEventPayload.EVENT_TYPE, serviceName, payload);
-                    return sendEvent(saved.getId(), envelope).thenReturn(saved);
+                    return sendEvent(savedUser.getId(), envelope).thenReturn(savedUser);
                 })
-                .map(UserUtils::entityToDto)
+                .map(UserUtils::toDto)
         );
     }
 
@@ -162,17 +168,17 @@ public class UserService {
             repository.findById(id)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
                 .flatMap(user -> {
-                    if (newPassword == null || newPassword.isBlank() || newPassword.equals(user.getPasswordHash())) {
-                        return Mono.empty(); // No change
+                    if (newPassword == null || newPassword.isBlank()) {
+                        return Mono.error(new IllegalArgumentException("New password cannot be blank."));
                     }
-                    user.setPasswordHash(hashPassword(newPassword)); // Implement hashPassword
+                    user.setHashedPassword(UserUtils.getPasswordEncoder().encode(newPassword.trim()));
                     return repository.save(user);
                 })
-                .flatMap(saved -> {
+                .flatMap(savedUser -> {
                     String corr = ctx.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-password-change");
-                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.entityToDto(saved));
+                    UserUpdatedEventPayload payload = new UserUpdatedEventPayload(UserUtils.toDto(savedUser));
                     EventEnvelope<UserUpdatedEventPayload> envelope = new EventEnvelope<>(corr, UserUpdatedEventPayload.EVENT_TYPE, serviceName, payload);
-                    return sendEvent(saved.getId(), envelope);
+                    return sendEvent(savedUser.getId(), envelope);
                 })
         );
     }
@@ -181,22 +187,14 @@ public class UserService {
         return Mono.deferContextual(ctx ->
             repository.findById(id)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + id)))
-                // Delete then return the deleted entity
                 .flatMap(user -> repository.delete(user).thenReturn(user))
-                // Publish deletion event and map to DTO
-                .flatMap(deleted -> {
+                .flatMap(deletedUser -> {
                     String corr = ctx.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-delete");
-                    UserDeletedEventPayload payload = new UserDeletedEventPayload(UserUtils.entityToDto(deleted));
+                    UserDeletedEventPayload payload = new UserDeletedEventPayload(UserUtils.toDto(deletedUser));
                     EventEnvelope<UserDeletedEventPayload> envelope = new EventEnvelope<>(corr, UserDeletedEventPayload.EVENT_TYPE, serviceName, payload);
-                    return sendEvent(deleted.getId(), envelope).thenReturn(deleted);
+                    return sendEvent(deletedUser.getId(), envelope).thenReturn(deletedUser);
                 })
-                .map(UserUtils::entityToDto) // Explicit cast
+                .map(UserUtils::toDto)
         );
-    }
-
-    // Placeholder for password hashing logic
-    private String hashPassword(String rawPassword) {
-        // TODO: Replace with your actual password hashing implementation (e.g., BCrypt)
-        return "HASHED_" + rawPassword;
     }
 }

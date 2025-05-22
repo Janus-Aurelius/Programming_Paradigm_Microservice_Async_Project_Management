@@ -2,6 +2,7 @@ package com.pm.userservice.controller;
 
 import java.net.URI;
 
+import com.pm.commoncontracts.domain.UserRole;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,7 +72,7 @@ public class UserController {
     @GetMapping("/role/{role}")
     public Flux<UserDto> getUsersByRole(@PathVariable String role) {
         log.info("Fetching users by role: {}", role);
-        return userService.getUsersByRole(role);
+        return userService.getUsersByRole(UserRole.valueOf(role));
     }
 
     @PostMapping
@@ -140,7 +141,7 @@ public class UserController {
                         String token = jwtUtil.generateToken(
                                 userDto.getId(),
                                 userDto.getEmail(),
-                                userDto.getRole(),
+                                String.valueOf(userDto.getRole()),
                                 com.pm.userservice.config.JwtConfig.JWT_EXPIRATION_MS
                         );
                         return Mono.just(ResponseEntity.ok(new JwtResponse(token)));

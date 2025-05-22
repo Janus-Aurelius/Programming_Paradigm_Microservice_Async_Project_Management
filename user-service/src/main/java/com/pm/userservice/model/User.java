@@ -18,6 +18,8 @@ import lombok.NoArgsConstructor;
 
 import java.time.Instant; // Changed from Date
 import java.util.List;
+import com.pm.commoncontracts.domain.UserRole; // Import UserRole
+
 // import java.util.UUID; // Not used for id, MongoDB ObjectId is typical
 
 @Document(collection = "users")
@@ -41,11 +43,14 @@ public class User {
         private String email;
 
         @NotBlank // Password hash should not be blank
-        private String passwordHash; // Store ONLY the hash (e.g., BCrypt)
+        private String hashedPassword; // Renamed from passwordHash
 
         @Builder.Default
-        private List<String> roles = List.of("ROLE_USER"); // e.g., ["ROLE_USER", "ROLE_ADMIN"], provide a default
+        private List<UserRole> roles = List.of(UserRole.ROLE_USER); // e.g., [UserRole.ROLE_USER, UserRole.ROLE_ADMIN], provide a default
 
+        private UserRole role; // Added UserRole
+
+        @Builder.Default
         private boolean enabled = true; // Default to enabled
 
         @Size(max = 50)
@@ -67,7 +72,9 @@ public class User {
 
         private Instant lastLogin; // Optional: for auditing
 
+        @Builder.Default
         private boolean emailVerified = false; // Default to false
+        @Builder.Default
         private boolean locked = false;        // Default to false
 
         @Size(max = 255)

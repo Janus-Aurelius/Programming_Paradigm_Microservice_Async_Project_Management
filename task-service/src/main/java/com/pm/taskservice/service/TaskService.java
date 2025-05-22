@@ -440,7 +440,7 @@ public class TaskService {
                 .retrieve()
                 .bodyToMono(UserDto.class)
                 .map(userDto -> {
-                    taskDto.setAssigneeName(userDto.getName());
+                    taskDto.setAssigneeName(userDto.getFirstName() + " " + userDto.getLastName());
                     return taskDto;
                 })
                 .doOnError(e -> log.error("Error enriching task with user info", e))
