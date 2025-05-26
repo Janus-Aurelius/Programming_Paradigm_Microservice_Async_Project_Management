@@ -16,13 +16,11 @@ public class JwtUtil {
 
     public JwtUtil(SecretKey secretKey) {
         this.secretKey = secretKey;
-    }
-
-    public String generateToken(String userId, String email, String role, long expirationMillis) {
+    }    public String generateToken(String userId, String email, String role, long expirationMillis) {
         return Jwts.builder()
                 .setSubject(userId)
                 .claim("email", email)
-                .claim("roles", role) // Ensure roles are included
+                .claim("role", role) // Single role included
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
                 .signWith(secretKey, SignatureAlgorithm.HS256)
@@ -53,9 +51,7 @@ public class JwtUtil {
 
     public String extractEmail(String token) {
         return (String) extractAllClaims(token).get("email");
-    }
-
-    public String extractRole(String token) {
+    }    public String extractRole(String token) {
         return (String) extractAllClaims(token).get("role");
     }
 }

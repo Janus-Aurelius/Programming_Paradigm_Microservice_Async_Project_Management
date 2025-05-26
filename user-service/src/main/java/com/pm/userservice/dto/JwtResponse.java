@@ -1,5 +1,7 @@
 package com.pm.userservice.dto;
 
+import com.pm.commoncontracts.dto.UserDto;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
@@ -7,4 +9,5 @@ import lombok.Data;
 @AllArgsConstructor
 public class JwtResponse {
     private String token;
+    private UserDto user;
 }

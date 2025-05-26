@@ -3,6 +3,16 @@ server:
   servlet:
     context-path: /api/projects
 
+services:
+  user-service:
+    url: http://user-service:8083
+  task-service:
+    url: http://task-service:8081
+  project-service:
+    url: http://project-service:8082
+  comment-service:
+    url: http://comment-service:8088
+
 spring:
   application:
     name: project-service
@@ -69,3 +79,4 @@ spring:
       uri: mongodb://localhost:27017/projectdb
   kafka:
     bootstrap-servers: localhost:9092
+

@@ -1,10 +1,6 @@
 package com.pm.apigateway.Filter;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,99 +14,130 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
+import com.pm.commoncontracts.domain.UserRole;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import reactor.core.publisher.Mono;
 
 @Component
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
-    @Value("${jwt.secret:defaultsecret}")
+    @Value("${jwt.secret:my-very-secret-key-for-jwt-signing}")
     private String jwtSecret;
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
-    // Simulated in-memory revoked user list (replace with Redis or DB in production)
     private static final java.util.Set<String> revokedUserIds = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 
-    // Simulated user existence check (replace with real call to user-service in production)
     private boolean isUserActive(String userId) {
-        // TODO: Replace with actual user-service call
         return !revokedUserIds.contains(userId);
-    }
-
-    // For demo: method to revoke a user (call this on password change, delete, etc.)
-    public static void revokeUser(String userId) {
-        revokedUserIds.add(userId);
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-        // Allow login and registration endpoints without JWT
-        if (path.startsWith("/api/users/login") || (path.startsWith("/api/users") && request.getMethod() != null && request.getMethod().name().equals("POST"))) {
+        String method = request.getMethod().name();
+
+        log.info("JWT Filter processing request: {} {}", method, path);
+
+        // Allow requests without JWT for login and test endpoints
+        if (path.startsWith("/api/users/auth/login") ||
+            path.startsWith("/api/users/auth/register") ||
+            (path.startsWith("/api/users") && "POST".equals(method)) ||
+            path.contains("/test/") ||
+            path.endsWith("/test") ||
+            path.startsWith("/test")) {
+            log.info("Request allowed without JWT: {} {}", method, path);
             return chain.filter(exchange);
         }
+
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             log.warn("Missing or invalid Authorization header for path: {}", path);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
+
         String token = authHeader.substring(7);
+        Claims claims;
+        
         try {
             SecretKey key = getSigningKey();
-            Claims claims = Jwts.parserBuilder()
+            claims = Jwts.parserBuilder()
                     .setSigningKey(key)
                     .build()
                     .parseClaimsJws(token)
                     .getBody();
+
             String userId = claims.getSubject();
-            String role = (String) claims.get("role");
-            // JWT Expiry is checked by parser; add user existence/revocation check
+            String userRole = (String) claims.get("role"); // Single role as string
+            
+            log.info("JWT claims - userId: {}, role: {}", userId, userRole);
+
             if (!isUserActive(userId)) {
                 log.warn("Rejected request for revoked or deleted user: {}", userId);
                 exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
                 return exchange.getResponse().setComplete();
             }
 
-            String requiredRole = null;
+            // Role-based access control
+            final String requiredRole;
             if (path.startsWith("/api/admin")) {
-                requiredRole = "ADMIN";
+                requiredRole = UserRole.ROLE_ADMIN.getRole();
             } else if (path.startsWith("/api/manager")) {
-                requiredRole = "PROJECT_MANAGER";
+                requiredRole = UserRole.ROLE_PROJECT_MANAGER.getRole();
+            } else {
+                requiredRole = null;
             }
 
-            if (requiredRole != null && (role == null || !role.equals(requiredRole))) {
-                log.warn("Access denied for user {} with role {} to path: {}", userId, role, path);
-                exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
-                return exchange.getResponse().setComplete();
-            }
+            if (requiredRole != null) {
+                if (userRole == null || !userRole.equals(requiredRole)) {
+                    log.warn("Access denied for user {} with role {} to path {}. Required role: {}", 
+                            userId, userRole, path, requiredRole);
+                    exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                    return exchange.getResponse().setComplete();
+                }
+            }            log.info("User {} with role {} accessed {}", userId, userRole, path);
 
-            // Audit log for access
-            log.info("User {} with role {} accessed {}", userId, role, path);
-            // Optionally, add user info to headers for downstream services
+            // Forward user info to downstream services
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                     .header("X-User-Id", userId)
                     .header("X-User-Email", (String) claims.get("email"))
-                    .header("X-User-Role", role)
+                    .header("X-User-Role", userRole != null ? userRole : "ROLE_USER")
                     .build();
+            
+            log.info("Forwarding headers to downstream: X-User-Id={}, X-User-Email={}, X-User-Role={}", 
+                    userId, claims.get("email"), userRole != null ? userRole : "ROLE_USER");
+                    
             return chain.filter(exchange.mutate().request(mutatedRequest).build());
-        } catch (Exception e) {
+            
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            log.warn("JWT token has expired: {}", e.getMessage());
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        } catch (io.jsonwebtoken.JwtException e) {
             log.warn("JWT validation failed: {}", e.getMessage());
+            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
+        } catch (Exception e) {
+            log.error("Unexpected error during JWT processing: {}", e.getMessage(), e);
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
     }
 
     private SecretKey getSigningKey() {
-        // Use the same secret as user-service JwtConfig
-        byte[] keyBytes = Base64.getEncoder().encode(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        return new SecretKeySpec(keyBytes, 0, keyBytes.length, "HmacSHA256");
+        String secret = jwtSecret;
+        if (secret.getBytes().length < 32) {
+            log.warn("JWT secret key is less than 32 bytes, which is not recommended for HS256. Consider using a stronger key.");
+        }
+        return Keys.hmacShaKeyFor(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     @Override
     public int getOrder() {
-        return -1; // High precedence
+        return -1;
     }
 }

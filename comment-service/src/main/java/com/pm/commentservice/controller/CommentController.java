@@ -41,11 +41,9 @@ public class CommentController {
     public Mono<CommentDto> createComment(@RequestBody CommentDto commentDto, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId, ServerHttpRequest request) {
         String userId = extractUserIdFromHeader(request);
         commentDto.setAuthorId(userId);
-        return commentService.createComment(commentDto, correlationId != null ? correlationId : "N/A");
-    }
+        return commentService.createComment(commentDto, correlationId != null ? correlationId : "N/A");    }
 
     @GetMapping
-    @PreAuthorize("hasRole('USER')")
     public Flux<CommentDto> getAllComments(Pageable pageable) { // Or custom pagination params
         return commentService.getAllComments(pageable);
     }

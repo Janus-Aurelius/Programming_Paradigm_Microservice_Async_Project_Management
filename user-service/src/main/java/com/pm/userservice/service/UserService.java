@@ -57,16 +57,21 @@ public class UserService {
         return repository.findById(id)
                 .map(UserUtils::toDto)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with id: " + id)));
-    }
-
-    public Mono<UserDto> getUserByEmail(String email) {
+    }    public Mono<UserDto> getUserByEmail(String email) {
         return repository.findByEmail(email)
                 .map(UserUtils::toDto)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with email: " + email)));
+    }    public Mono<UserDto> getUserByEmailForAuthentication(String email) {
+        return repository.findByEmail(email)
+                .map(UserUtils::toDtoWithPassword)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with email: " + email)));
     }
 
-    public Flux<UserDto> getUsersByRole(UserRole role) {
-        return repository.findByRole(role.name())
+    public Mono<User> getUserEntityByEmailForAuthentication(String email) {
+        return repository.findByEmail(email)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found with email: " + email)));
+    }    public Flux<UserDto> getUsersByRole(UserRole role) {
+        return repository.findByRole(role)
                 .map(UserUtils::toDto)
                 .switchIfEmpty(Flux.empty());
     }
@@ -76,11 +81,10 @@ public class UserService {
             repository.findByUsername(userDto.getUsername()).next()
                 .flatMap(existingUser -> Mono.error(new ConflictException("Username already exists: " + userDto.getUsername())))
                 .switchIfEmpty(Mono.defer(() -> repository.findByEmail(userDto.getEmail())
-                    .flatMap(existingUser -> Mono.error(new ConflictException("Email already in use: " + userDto.getEmail())))))
-                .switchIfEmpty(Mono.defer(() -> {
+                    .flatMap(existingUser -> Mono.error(new ConflictException("Email already in use: " + userDto.getEmail())))))                .switchIfEmpty(Mono.defer(() -> {
                     User user = UserUtils.toEntity(userDto);
                     if (user.getRole() == null) {
-                        user.setRole(UserRole.valueOf("ROLE_USER")); // Use valueOf("ROLE_USER")
+                        user.setRole(UserRole.ROLE_USER); // Set default role
                     }
                     return repository.insert(user)
                         .flatMap(savedUser -> {

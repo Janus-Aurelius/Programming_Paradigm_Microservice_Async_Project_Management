@@ -13,16 +13,36 @@ public class UserUtils {
     public static UserDto toDto(User user) {
         if (user == null) {
             return null;
-        }
-        return UserDto.builder()
+        }        return UserDto.builder()
                 .id(user.getId())
                 .username(user.getUsername())
                 .email(user.getEmail())
                 // Do not map hashed password back to DTO password field
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
-                .role(user.getRole()) // Maps the single UserRole field from entity to DTO
+                .role(user.getRole()) // Direct single role mapping
                 .build();
+    }
+
+    // Method for authentication that includes the hashed password
+    public static UserDto toDtoWithPassword(User user) {
+        if (user == null) {
+            return null;
+        }        return UserDto.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .password(user.getHashedPassword()) // Include hashed password for authentication
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .role(user.getRole()) // Direct single role mapping
+                .build();
+    }    // Get user role as string for JWT generation - simplified for single role
+    public static String getRoleAsString(User user) {
+        if (user == null || user.getRole() == null) {
+            return "ROLE_USER"; // Default role
+        }
+        return user.getRole().name();
     }
 
     public static User toEntity(UserDto userDto) {
@@ -30,18 +50,21 @@ public class UserUtils {
             return null;
         }
         User.UserBuilder builder = User.builder()
-                .id(userDto.getId()) 
-                .username(userDto.getUsername())
+                .id(userDto.getId())                .username(userDto.getUsername())
                 .email(userDto.getEmail())
                 .firstName(userDto.getFirstName())
-                .lastName(userDto.getLastName())
-                .role(userDto.getRole()); // Sets the single UserRole field from DTO to entity builder
+                .lastName(userDto.getLastName());
+
+        // Set single role
+        if (userDto.getRole() != null) {
+            builder.role(userDto.getRole());
+        }
 
         if (userDto.getPassword() != null && !userDto.getPassword().trim().isEmpty()) {
             builder.hashedPassword(passwordEncoder.encode(userDto.getPassword().trim()));
         }
         
-        // User entity's @Builder.Default handles initial values for 'enabled', 'emailVerified', 'locked', and the 'roles' list.
+        // User entity's @Builder.Default handles initial values for 'enabled', 'emailVerified', 'locked', and the 'role'.
         // 'createdAt' and 'updatedAt' are handled by Spring Data auditing.
         // If userDto.getRole() is null, user.role will be null after this. UserService can set a default if needed.
 
@@ -64,8 +87,7 @@ public class UserUtils {
         }
         if (userDto.getLastName() != null) {
             existingUser.setLastName(userDto.getLastName());
-        }
-        if (userDto.getRole() != null) {
+        }        if (userDto.getRole() != null) {
             existingUser.setRole(userDto.getRole()); // Updates the single UserRole field
         }
 
@@ -73,8 +95,7 @@ public class UserUtils {
         if (userDto.getPassword() != null && !userDto.getPassword().trim().isEmpty()) {
             existingUser.setHashedPassword(passwordEncoder.encode(userDto.getPassword().trim()));
         }
-        
-        // The 'roles' list (List<UserRole>) in User entity is not directly managed by this method from UserDto.role.
+          // The 'role' field (UserRole) in User entity is not directly managed by this method from UserDto.role.
         // It defaults via @Builder.Default.
         // Fields like 'enabled', 'locked', 'emailVerified' are not in UserDto and thus not updated here.
 

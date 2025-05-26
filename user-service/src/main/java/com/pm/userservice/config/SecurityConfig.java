@@ -11,9 +11,7 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 
 @Configuration
 @EnableWebFluxSecurity
-public class SecurityConfig {
-
-    private final ServerSecurityContextRepository securityContextRepository;
+public class SecurityConfig {    private final ServerSecurityContextRepository securityContextRepository;
 
     public SecurityConfig(ServerSecurityContextRepository securityContextRepository) {
         this.securityContextRepository = securityContextRepository;
@@ -25,8 +23,8 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .securityContextRepository(securityContextRepository)
             .authorizeExchange(exchanges -> exchanges
-                .pathMatchers("/api/users/login", "/api/users", "/api/users/").permitAll()
-                .pathMatchers("/api/admin/**").hasRole("ADMIN") // Example role-based access
+                .pathMatchers("/auth/login", "/auth/test-login", "/test/**", "/api/users/auth/login", "/api/users/auth/test-login", "/api/users/test/**", "/", "").permitAll()
+                .pathMatchers("/admin/**").hasRole("ADMIN") // Example role-based access
                 .anyExchange().authenticated()
             );
         return http.build();

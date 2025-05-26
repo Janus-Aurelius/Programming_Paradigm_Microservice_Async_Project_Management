@@ -1,24 +1,23 @@
 package com.pm.userservice.model;
 
-import org.springframework.data.annotation.Id;
+import java.time.Instant;
+
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.annotation.CreatedBy; // If you implement Auditable
-import org.springframework.data.annotation.LastModifiedBy; // If you implement Auditable
+import org.springframework.data.annotation.Id; // If you implement Auditable
+import org.springframework.data.annotation.LastModifiedDate; // If you implement Auditable
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
+
+import com.pm.commoncontracts.domain.UserRole;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.Instant; // Changed from Date
-import java.util.List;
-import com.pm.commoncontracts.domain.UserRole; // Import UserRole
+import lombok.NoArgsConstructor; // Changed from Date
 
 // import java.util.UUID; // Not used for id, MongoDB ObjectId is typical
 
@@ -39,16 +38,14 @@ public class User {
         @NotBlank
         @Email
         @Size(max = 100)
-        @Indexed(unique = true)
-        private String email;
-
+        @Indexed(unique = true)        private String email;
+        
         @NotBlank // Password hash should not be blank
-        private String hashedPassword; // Renamed from passwordHash
-
+        @Field("passwordHash") // Map to MongoDB field name
+        private String hashedPassword; // Java field name
+        
         @Builder.Default
-        private List<UserRole> roles = List.of(UserRole.ROLE_USER); // e.g., [UserRole.ROLE_USER, UserRole.ROLE_ADMIN], provide a default
-
-        private UserRole role; // Added UserRole
+        private UserRole role = UserRole.ROLE_USER; // Single role per user - simplified architecture
 
         @Builder.Default
         private boolean enabled = true; // Default to enabled
@@ -70,12 +67,11 @@ public class User {
         @LastModifiedDate
         private Instant updatedAt;
 
-        private Instant lastLogin; // Optional: for auditing
-
-        @Builder.Default
+        private Instant lastLogin; // Optional: for auditing        @Builder.Default
         private boolean emailVerified = false; // Default to false
+        
         @Builder.Default
-        private boolean locked = false;        // Default to false
+        private boolean locked = false; // Default to false
 
         @Size(max = 255)
         private String profilePictureUrl; // Optional: for avatars

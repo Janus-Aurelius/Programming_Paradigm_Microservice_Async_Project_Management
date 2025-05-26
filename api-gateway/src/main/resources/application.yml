@@ -13,41 +13,47 @@ spring:
     gateway:
       default-filters:
         - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOrigins: "http://localhost:4200" # Allow requests from Angular app
-            allowedMethods: "*"
-
-            allowedHeaders: "*"
-            exposedHeaders: "*"
-
-            maxAge: 3600
 
       routes:
-        - id: websocket_service_route
-          uri: ws://websocket-service:8084 # Route to websocket-service using ws scheme
+        - id: user_service_route
+          uri: http://user-service:8083
           predicates:
-            - Path=/ws/updates/** # Match the path defined in websocket-service config
-
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=2
 
         - id: project_service_route
-          #uri: lb://project-service # Use service name if using service discovery, or direct URL for now
-          # For direct URL without service discovery:
           uri: http://project-service:8082
           predicates:
-            - Path=/api/projects/** # Route requests starting with /api/projects
+            - Path=/api/projects/**
           filters:
-            - StripPrefix=1         # Remove /api prefix before forwarding
+            - StripPrefix=1
 
         - id: task_service_route
-          #uri: lb://task-service
-          # For direct URL without service discovery:
           uri: http://task-service:8081
           predicates:
-            - Path=/api/tasks/** # Route requests starting with /api/tasks
+            - Path=/api/tasks/**
+
+        - id: comment_service_route
+          uri: http://comment-service:8088
+          predicates:
+            - Path=/api/comments/**
           filters:
-            - StripPrefix=1        # Remove /api prefix
+            - StripPrefix=1
+
+        - id: notification_service_route
+          uri: http://notification-service:8086
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - StripPrefix=1
+
+        - id: websocket_service_route
+          uri: ws://websocket-service:8085/ws
+          predicates:
+            - Path=/ws/updates/**
+          filters:
+            - StripPrefix=1
 
 jwt:
   secret: my-very-secret-key-for-jwt-signing

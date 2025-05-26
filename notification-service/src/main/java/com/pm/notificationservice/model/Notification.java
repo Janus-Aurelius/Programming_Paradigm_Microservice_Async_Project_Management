@@ -19,6 +19,7 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -59,6 +60,8 @@ public class Notification {
     @NotBlank
     @Size(max = 1024)
     private String message; // short, user-visible text
+
+    private LocalDateTime timestamp; // when the event occurred
 
     /* ---------- state ---------- */
     private boolean read = false; // false = unread

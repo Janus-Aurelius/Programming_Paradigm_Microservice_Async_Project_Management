@@ -49,7 +49,7 @@ services:
   user-service:
     url: http://user-service:8084
   task-service:
-    url: http://task-service:8084
+    url: http://task-service:8081
   project-service:
     url: http://project-service:8082
   comment-service:

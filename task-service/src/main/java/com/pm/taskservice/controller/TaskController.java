@@ -63,11 +63,10 @@ public class TaskController {
                             .buildAndExpand(createdTask.getId()) // Assuming TaskDto has id()
                             .toUri();
                     log.info("Task created successfully with ID: {}", createdTask.getId());
-                    return ResponseEntity.created(location).body(createdTask); // Return 201 Created
+                                        return ResponseEntity.created(location).body(createdTask); // Return 201 Created
                 });
     }
 
-    @PreAuthorize("hasRole('USER')")
     @GetMapping
     public Flux<TaskDto> getAllTasks() {
         log.info("Received request to get all tasks");

@@ -2,6 +2,17 @@ server:
   port: 8088 # Assigning port 8088
   servlet:
     context-path: /api/comments # Setting context path
+
+services:
+  user-service:
+    url: http://user-service:8084
+  task-service:
+    url: http://task-service:8081
+  project-service:
+    url: http://project-service:8082
+  comment-service:
+    url: http://comment-service:8088
+
 spring:
   application:
     name: comment-service
