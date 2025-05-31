@@ -44,9 +44,7 @@ public class TaskController {
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
-    }
-
-    @PreAuthorize("hasPermission(#taskDto, 'EDIT')")
+    }    @PreAuthorize("hasPermission(null, 'TASK_CREATE')")
     @PostMapping
     public Mono<ResponseEntity<TaskDto>> createTask(
             @Valid @RequestBody TaskDto taskDto, // Add @Valid for validation
@@ -65,15 +63,12 @@ public class TaskController {
                     log.info("Task created successfully with ID: {}", createdTask.getId());
                                         return ResponseEntity.created(location).body(createdTask); // Return 201 Created
                 });
-    }
-
+    }    @PreAuthorize("hasPermission(null, 'TASK_READ')")
     @GetMapping
     public Flux<TaskDto> getAllTasks() {
         log.info("Received request to get all tasks");
         return taskService.getTasks(); // Return Flux directly
-    }
-
-    @PreAuthorize("hasPermission(#id, 'Task', 'VIEW')")
+    }    @PreAuthorize("hasPermission(#id, 'Task', 'TASK_READ')")
     @GetMapping("/{id}")
     public Mono<ResponseEntity<TaskDto>> getTaskById(@PathVariable String id) {
         log.info("Received request to get task by ID: {}", id);
@@ -81,23 +76,17 @@ public class TaskController {
                 .map(ResponseEntity::ok) // If found, wrap in 200 OK
                 .defaultIfEmpty(ResponseEntity.notFound().build()); // If service returns empty Mono, return 404
         // Note: This .defaultIfEmpty can be removed if the service throws ResourceNotFoundException handled globally
-    }
-
-    @PreAuthorize("hasPermission(#projectId, 'Project', 'VIEW')")
+    }    @PreAuthorize("hasPermission(#projectId, 'Project', 'PRJ_READ')")
     @GetMapping(params = "projectId")
     public Flux<TaskDto> getTasksByProjectId(@RequestParam String projectId) {
         log.info("Received request to get tasks for project ID: {}", projectId);
         return taskService.getTasksByProjectId(projectId);
-    }
-
-    @PreAuthorize("hasPermission(#assignedTo, 'User', 'VIEW_ASSIGNED_TASKS')")
+    }    @PreAuthorize("hasPermission(null, 'TASK_READ')")
     @GetMapping(params = "assignedTo")
     public Flux<TaskDto> getTasksByAssigneeId(@RequestParam String assignedTo) {
         log.info("Received request to get tasks assigned to: {}", assignedTo);
         return taskService.getTasksByAssigneeId(assignedTo);
-    }
-
-    @PreAuthorize("hasPermission(#id, 'Task', 'EDIT')")
+    }    @PreAuthorize("hasPermission(#id, 'Task', 'TASK_STATUS_CHANGE')")
     @PutMapping("/{id}/status")
     public Mono<ResponseEntity<TaskDto>> updateTaskStatus(
             @PathVariable String id,
@@ -112,9 +101,7 @@ public class TaskController {
                 .onErrorResume(ConflictException.class, e ->
                         Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
                 );
-    }
-
-    @PreAuthorize("hasPermission(#id, 'Task', 'EDIT')")
+    }    @PreAuthorize("hasPermission(#id, 'Task', 'TASK_UPDATE')")
     @PutMapping("/{id}")
     public Mono<ResponseEntity<TaskDto>> updateTaskCombined(
             @PathVariable String id,
@@ -128,9 +115,7 @@ public class TaskController {
                 .onErrorResume(ConflictException.class, e ->
                         Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
                 );
-    }
-
-    @PreAuthorize("hasPermission(#id, 'Task', 'EDIT')")
+    }    @PreAuthorize("hasPermission(#id, 'Task', 'TASK_PRIORITY_CHANGE')")
     @PutMapping("/{id}/priority")
     public Mono<ResponseEntity<TaskDto>> updateTaskPriority(
             @PathVariable String id,
@@ -149,9 +134,7 @@ public class TaskController {
                 .onErrorResume(ConflictException.class,
                         e -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
                 );
-    }
-
-    @PreAuthorize("hasPermission(#id, 'Task', 'DELETE')")
+    }    @PreAuthorize("hasPermission(#id, 'Task', 'TASK_DELETE')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deleteTask(@PathVariable String id) {

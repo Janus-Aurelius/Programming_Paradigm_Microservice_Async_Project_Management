@@ -13,13 +13,12 @@ import org.springframework.web.reactive.socket.WebSocketSession;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pm.commoncontracts.envelope.EventEnvelope;
-
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
 
-@Service
 @Slf4j
+@Service
 @RequiredArgsConstructor
 public class WebSocketSessionManager {
 

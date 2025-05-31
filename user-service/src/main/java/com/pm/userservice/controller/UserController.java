@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,7 +44,6 @@ public class UserController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    @Autowired
     public UserController(UserService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
@@ -51,12 +51,14 @@ public class UserController {
     }
 
     @GetMapping
+    @PreAuthorize("hasPermission(null, 'USER_READ')")
     public Flux<UserDto> getAllUsers() {
         log.info("Fetching all users");
         return userService.getUsers();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'USER_READ')")
     public Mono<ResponseEntity<UserDto>> getUserById(@PathVariable String id) {
         log.info("Fetching user by id: {}", id);
         return userService.getUserById(id)
@@ -65,6 +67,7 @@ public class UserController {
     }
 
     @GetMapping("/email/{email}")
+    @PreAuthorize("hasPermission(#email, 'USER_READ')")
     public Mono<ResponseEntity<UserDto>> getUserByEmail(@PathVariable String email) {
         log.info("Fetching user by email: {}", email);
         return userService.getUserByEmail(email)
@@ -73,12 +76,14 @@ public class UserController {
     }
 
     @GetMapping("/role/{role}")
+    @PreAuthorize("hasPermission(null, 'USER_READ')")
     public Flux<UserDto> getUsersByRole(@PathVariable String role) {
         log.info("Fetching users by role: {}", role);
         return userService.getUsersByRole(UserRole.valueOf(role));
     }
 
     @PostMapping
+    @PreAuthorize("hasPermission(null, 'USER_CREATE')")
     public Mono<ResponseEntity<UserDto>> createUser(@Valid @RequestBody UserDto userDto, UriComponentsBuilder uriBuilder) {
         log.info("Creating new user: {}", userDto.getEmail());
         return userService.createUser(userDto)
@@ -94,6 +99,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'USER_UPDATE')")
     public Mono<ResponseEntity<UserDto>> updateUser(@PathVariable String id, @Valid @RequestBody UserDto userDto) {
         log.info("Updating user with id: {}", id);
         return userService.updateUser(id, userDto)
@@ -107,6 +113,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/profile")
+    @PreAuthorize("hasPermission(#id, 'USER_UPDATE')")
     public Mono<ResponseEntity<UserDto>> updateProfile(@PathVariable String id, @RequestBody UserDto profileDto) {
         log.info("Updating profile for user with id: {}", id);
         return userService.updateUserProfile(id, profileDto)
@@ -117,6 +124,7 @@ public class UserController {
     }
 
     @PatchMapping("/{id}/password")
+    @PreAuthorize("hasPermission(#id, 'USER_UPDATE')")
     public Mono<ResponseEntity<Void>> changePassword(@PathVariable String id, @RequestBody UserDto passwordDto) {
         log.info("Changing password for user with id: {}", id);
         return userService.changeUserPassword(id, passwordDto.getPassword())
@@ -127,6 +135,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'USER_DELETE')")
     public Mono<ResponseEntity<Void>> deleteUser(@PathVariable String id) {
         log.info("Deleting user with id: {}", id);
         return userService.deleteUser(id)

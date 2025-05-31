@@ -1,7 +1,11 @@
 package com.pm.websocketservice.config;
 
+import com.pm.websocketservice.security.WebSocketPermissionEvaluator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
@@ -10,8 +14,16 @@ import org.springframework.web.server.WebFilter;
 import com.pm.commonsecurity.security.UserIdHeaderWebFilter;
 
 @EnableWebFluxSecurity
+@EnableReactiveMethodSecurity
 @Configuration
 public class SecurityConfig {
+    
+    private final WebSocketPermissionEvaluator webSocketPermissionEvaluator;
+    
+    public SecurityConfig(WebSocketPermissionEvaluator webSocketPermissionEvaluator) {
+        this.webSocketPermissionEvaluator = webSocketPermissionEvaluator;
+    }
+    
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         http
@@ -26,5 +38,12 @@ public class SecurityConfig {
     @Bean
     public WebFilter userIdHeaderWebFilter() {
         return (WebFilter) new UserIdHeaderWebFilter();
+    }
+    
+    @Bean
+    public MethodSecurityExpressionHandler methodSecurityExpressionHandler() {
+        DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();
+        expressionHandler.setPermissionEvaluator(webSocketPermissionEvaluator);
+        return expressionHandler;
     }
 }

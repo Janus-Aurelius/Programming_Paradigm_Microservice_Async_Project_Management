@@ -1,7 +1,11 @@
 package com.pm.userservice.config;
 
+import com.pm.userservice.security.UserPermissionEvaluator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -11,7 +15,10 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 
 @Configuration
 @EnableWebFluxSecurity
-public class SecurityConfig {    private final ServerSecurityContextRepository securityContextRepository;
+@EnableReactiveMethodSecurity
+public class SecurityConfig {
+    
+    private final ServerSecurityContextRepository securityContextRepository;
 
     public SecurityConfig(ServerSecurityContextRepository securityContextRepository) {
         this.securityContextRepository = securityContextRepository;
@@ -24,7 +31,6 @@ public class SecurityConfig {    private final ServerSecurityContextRepository s
             .securityContextRepository(securityContextRepository)
             .authorizeExchange(exchanges -> exchanges
                 .pathMatchers("/auth/login", "/auth/test-login", "/test/**", "/api/users/auth/login", "/api/users/auth/test-login", "/api/users/test/**", "/", "").permitAll()
-                .pathMatchers("/admin/**").hasRole("ADMIN") // Example role-based access
                 .anyExchange().authenticated()
             );
         return http.build();
@@ -33,5 +39,11 @@ public class SecurityConfig {    private final ServerSecurityContextRepository s
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }    @Bean
+    public MethodSecurityExpressionHandler methodSecurityExpressionHandler(
+            UserPermissionEvaluator userPermissionEvaluator) {
+        DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();
+        expressionHandler.setPermissionEvaluator(userPermissionEvaluator);
+        return expressionHandler;
     }
 }

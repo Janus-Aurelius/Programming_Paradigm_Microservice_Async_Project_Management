@@ -37,6 +37,15 @@ spring:
        properties:
          spring.json.trusted.packages: " com.pm.commoncontracts.*"
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh
+  endpoint:
+    refresh:
+      enabled: true
+
 jwt:
   secret: my-very-secret-key-for-jwt-signing
 
@@ -52,12 +61,6 @@ logging:
     reactor.kafka.sender: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [CorrID: %X{correlationId:-N/A}] - %msg%n"
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "*"
 
 ---
 spring:

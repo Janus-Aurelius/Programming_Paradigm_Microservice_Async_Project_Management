@@ -33,9 +33,7 @@ public class CommentController {
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
-    }
-
-    @PreAuthorize("hasPermission(#commentDto, 'Comment', 'CREATE')")
+    }    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentDto, 'CMT_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<CommentDto> createComment(@RequestBody CommentDto commentDto, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId, ServerHttpRequest request) {
@@ -48,19 +46,19 @@ public class CommentController {
         return commentService.getAllComments(pageable);
     }
 
-    @PreAuthorize("hasPermission(#projectId, 'Project', 'VIEW')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #projectId, 'CMT_READ')")
     @GetMapping("/project/{projectId}")
     public Flux<CommentDto> getCommentsForProject(@PathVariable String projectId) {
         return commentService.getCommentsForParent(projectId, ParentType.PROJECT);
     }
 
-    @PreAuthorize("hasPermission(#taskId, 'Task', 'VIEW')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #taskId, 'CMT_READ')")
     @GetMapping("/task/{taskId}")
     public Flux<CommentDto> getCommentsForTask(@PathVariable String taskId) {
         return commentService.getCommentsForParent(taskId, ParentType.TASK);
     }
 
-    @PreAuthorize("hasPermission(#parentCommentId, 'Comment', 'REPLY')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #parentCommentId, 'CMT_CREATE')")
     @PostMapping("/{parentCommentId}/replies")
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<CommentDto> createReply(@PathVariable String parentCommentId, @RequestBody CommentDto replyDto, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId, ServerHttpRequest request) {
@@ -69,19 +67,19 @@ public class CommentController {
         return commentService.createReply(parentCommentId, replyDto, correlationId != null ? correlationId : "N/A");
     }
 
-    @PreAuthorize("hasPermission(#parentCommentId, 'Comment', 'VIEW_REPLIES')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #parentCommentId, 'CMT_READ')")
     @GetMapping("/{parentCommentId}/replies")
     public Flux<CommentDto> getRepliesForComment(@PathVariable String parentCommentId) {
         return commentService.getRepliesForComment(parentCommentId);
     }
 
-    @PreAuthorize("hasPermission(#commentId, 'Comment', 'EDIT')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentId, 'CMT_UPDATE')")
     @PutMapping("/{commentId}")
     public Mono<CommentDto> updateComment(@PathVariable String commentId, @RequestBody CommentDto commentDto, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
         return commentService.updateComment(commentId, commentDto.getContent(), correlationId != null ? correlationId : "N/A");
     }
 
-    @PreAuthorize("hasPermission(#commentId, 'Comment', 'DELETE')")
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentId, 'CMT_DELETE')")
     @DeleteMapping("/{commentId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deleteComment(@PathVariable String commentId, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {

@@ -25,16 +25,14 @@ public class NotificationController {
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
-    }
-
-    @PreAuthorize("hasPermission(#userId, 'User', 'VIEW_NOTIFICATIONS')")
+    }    @PreAuthorize("@notificationPermissionEvaluator.hasPermission(authentication, #userId, 'NOTI_READ')")
     @GetMapping
     public Flux<NotificationDto> getUserNotifications(ServerHttpRequest request) {
         String userId = extractUserIdFromHeader(request);
         return notificationService.getNotificationsForUser(userId);
     }
 
-    @PreAuthorize("hasPermission(#notificationId, 'Notification', 'MARK_READ')")
+    @PreAuthorize("@notificationPermissionEvaluator.hasPermission(authentication, #notificationId, 'NOTI_UPDATE')")
     @PostMapping("/mark-read/{notificationId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> markNotificationRead(@PathVariable String notificationId, ServerHttpRequest request) {

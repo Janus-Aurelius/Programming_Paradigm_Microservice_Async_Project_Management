@@ -53,6 +53,9 @@ management:
     web:
       exposure:
         include: "*"
+  endpoint:
+    refresh:
+      enabled: true
 
 ---
 spring:

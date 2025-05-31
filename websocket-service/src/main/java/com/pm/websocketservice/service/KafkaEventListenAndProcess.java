@@ -3,14 +3,19 @@ package com.pm.websocketservice.service;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pm.commoncontracts.envelope.EventEnvelope;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectDeletedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectStatusChangedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectUpdatedEventPayload;
+import com.pm.commoncontracts.events.task.TaskAssignedEventPayload;
 import com.pm.commoncontracts.events.task.TaskCreatedEventPayload;
 import com.pm.commoncontracts.events.task.TaskDeletedEventPayload;
+import com.pm.commoncontracts.events.task.TaskPriorityChangedEventPayload;
 import com.pm.commoncontracts.events.task.TaskStatusChangedEventPayload;
+import com.pm.commoncontracts.events.task.TaskUpdatedEventPayload;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -22,16 +27,14 @@ import reactor.core.publisher.Mono;
 import reactor.kafka.receiver.KafkaReceiver;
 import reactor.kafka.receiver.ReceiverRecord;
 
-@Component
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class KafkaEventListenAndProcess {
     private final KafkaReceiver<String, EventEnvelope<?>> projectEventsReceiver;
     private final KafkaReceiver<String, EventEnvelope<?>> taskEventsReceiver;
     private final KafkaReceiver<String, EventEnvelope<?>> notificationEventsReceiver;
-    private final KafkaReceiver<String, EventEnvelope<?>> userEventsReceiver;
     private final WebSocketSessionManager sessionManager;
-    private final ObjectMapper objectMapper;
 
     private Disposable projectSubscriptionDisposable;
     private Disposable taskSubscriptionDisposable;
@@ -159,21 +162,46 @@ public class KafkaEventListenAndProcess {
         MDC.remove(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY);
         MDC.remove("kafkaEventId");
         MDC.remove("kafkaEventType");
-    }
-
-    private String determineProjectId(Object eventPayload) {
+    }    private String determineProjectId(Object eventPayload) {
         if (eventPayload == null) return null;
 
-        if (eventPayload instanceof ProjectCreatedEventPayload p) {
+        // Project events
+        if (eventPayload instanceof ProjectCreatedEventPayload) {
+            ProjectCreatedEventPayload p = (ProjectCreatedEventPayload) eventPayload;
             return p.projectDto() != null ? p.projectDto().getId() : null;
-        } else if (eventPayload instanceof ProjectDeletedEventPayload p) {
+        } else if (eventPayload instanceof ProjectDeletedEventPayload) {
+            ProjectDeletedEventPayload p = (ProjectDeletedEventPayload) eventPayload;
             return p.projectDto().getId();
-        } else if (eventPayload instanceof TaskCreatedEventPayload t) {
+        } else if (eventPayload instanceof ProjectUpdatedEventPayload) {
+            ProjectUpdatedEventPayload p = (ProjectUpdatedEventPayload) eventPayload;
+            return p.projectDto() != null ? p.projectDto().getId() : null;
+        } else if (eventPayload instanceof ProjectStatusChangedEventPayload) {
+            ProjectStatusChangedEventPayload p = (ProjectStatusChangedEventPayload) eventPayload;
+            return p.projectDto() != null ? p.projectDto().getId() : null;
+        } else if (eventPayload instanceof ProjectTaskCreatedEventPayload) {
+            ProjectTaskCreatedEventPayload p = (ProjectTaskCreatedEventPayload) eventPayload;
+            return p.projectId(); // This has projectId directly
+        }
+        
+        // Task events
+        else if (eventPayload instanceof TaskCreatedEventPayload) {
+            TaskCreatedEventPayload t = (TaskCreatedEventPayload) eventPayload;
             return t.taskDto() != null ? t.taskDto().getProjectId() : null;
-        } else if (eventPayload instanceof TaskStatusChangedEventPayload t) {
+        } else if (eventPayload instanceof TaskStatusChangedEventPayload) {
+            TaskStatusChangedEventPayload t = (TaskStatusChangedEventPayload) eventPayload;
             return t.taskDto() != null ? t.taskDto().getProjectId() : null;
-        } else if (eventPayload instanceof TaskDeletedEventPayload t) {
+        } else if (eventPayload instanceof TaskDeletedEventPayload) {
+            TaskDeletedEventPayload t = (TaskDeletedEventPayload) eventPayload;
             return t.taskDto().getProjectId();
+        } else if (eventPayload instanceof TaskUpdatedEventPayload) {
+            TaskUpdatedEventPayload t = (TaskUpdatedEventPayload) eventPayload;
+            return t.taskDto() != null ? t.taskDto().getProjectId() : null;
+        } else if (eventPayload instanceof TaskPriorityChangedEventPayload) {
+            TaskPriorityChangedEventPayload t = (TaskPriorityChangedEventPayload) eventPayload;
+            return t.dto() != null ? t.dto().getProjectId() : null;
+        } else if (eventPayload instanceof TaskAssignedEventPayload) {
+            TaskAssignedEventPayload t = (TaskAssignedEventPayload) eventPayload;
+            return t.taskDto() != null ? t.taskDto().getProjectId() : null;
         }
 
         log.warn("Unknown event payload type encountered: {}", eventPayload.getClass().getName());

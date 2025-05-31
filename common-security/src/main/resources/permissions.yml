@@ -1,0 +1,53 @@
+# permissions.yml
+rbac:
+  roles:
+    ROLE_USER:
+      - USER_SELF_READ
+      - USER_SELF_UPDATE
+      - CMT_CREATE
+      - CMT_UPDATE_OWN
+      - CMT_DELETE_OWN
+      - NOTI_READ
+      - NOTI_MARK_READ
+      
+    ROLE_DEVELOPER:
+      - USER_SELF_READ
+      - USER_SELF_UPDATE
+      - CMT_CREATE
+      - CMT_UPDATE_OWN
+      - CMT_DELETE_OWN
+      - NOTI_READ
+      - NOTI_MARK_READ
+      - PRJ_READ
+      - TASK_CREATE
+      - TASK_READ
+      - TASK_UPDATE
+      - TASK_STATUS_CHANGE
+      - TASK_PRIORITY_CHANGE
+      
+    ROLE_PROJECT_MANAGER:
+      - USER_SELF_READ
+      - USER_SELF_UPDATE
+      - CMT_CREATE
+      - CMT_UPDATE_OWN
+      - CMT_DELETE_OWN
+      - NOTI_READ
+      - NOTI_MARK_READ
+      - PRJ_READ
+      - TASK_CREATE
+      - TASK_READ
+      - TASK_UPDATE
+      - TASK_STATUS_CHANGE
+      - TASK_PRIORITY_CHANGE
+      - PRJ_CREATE
+      - PRJ_UPDATE
+      - PRJ_DELETE
+      - PRJ_ARCHIVE
+      - PRJ_MEMBER_ADD
+      - PRJ_MEMBER_REMOVE
+      - TASK_ASSIGN
+      - TASK_DELETE
+      - CMT_DELETE_ANY
+
+    ROLE_ADMIN:
+      - "**"
