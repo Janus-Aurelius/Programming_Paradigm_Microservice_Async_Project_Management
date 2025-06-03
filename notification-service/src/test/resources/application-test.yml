@@ -1,0 +1,34 @@
+spring:
+  data:
+    mongodb:
+      # Embedded MongoDB configuration for tests
+      uri: mongodb://localhost:27017/test-notificationdb
+  kafka:
+    # Disable Kafka auto-configuration for tests to avoid connection issues
+    bootstrap-servers: ${KAFKA_BROKERS:}
+    consumer:
+      bootstrap-servers: ${KAFKA_BROKERS:}
+    producer:
+      bootstrap-servers: ${KAFKA_BROKERS:}
+
+# Embedded MongoDB version configuration
+de:
+  flapdoodle:
+    mongodb:
+      embedded:
+        version: 7.0.11
+
+# Disable certain auto-configurations for tests
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Test logging configuration
+logging:
+  level:
+    root: WARN
+    com.pm.notificationservice: INFO
+    org.springframework.boot.test: INFO
+    de.flapdoodle.embed.mongo: INFO

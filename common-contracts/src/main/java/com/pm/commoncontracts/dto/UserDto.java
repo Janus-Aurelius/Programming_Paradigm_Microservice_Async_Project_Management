@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class UserDto {
+
     private String id;
     private String username;
     private String email;
@@ -19,4 +20,10 @@ public class UserDto {
     private String firstName;
     private String lastName;
     private UserRole role; // Added UserRole
+    private Boolean enabled;
+    private Boolean active;
+    private String lastLogin;
+    private String profilePictureUrl;
+    private String createdAt;
+    private String updatedAt;
 }

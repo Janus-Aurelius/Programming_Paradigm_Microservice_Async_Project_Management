@@ -47,9 +47,9 @@ public class TaskService {
     private String serviceName;
 
     public TaskService(
-        TaskRepository repository,
-        ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
-        @Qualifier("userWebClient") WebClient userWebClient
+            TaskRepository repository,
+            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
+            @Qualifier("userWebClient") WebClient userWebClient
     ) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
@@ -97,7 +97,6 @@ public class TaskService {
     // ==============================
     // Write operations (Transformed)
     // ==============================
-
     public Mono<TaskDto> createTask(TaskDto taskDto) {
         // Use deferContextual to access Reactor Context for correlationId
         return Mono.deferContextual(contextView -> {
@@ -112,8 +111,9 @@ public class TaskService {
     }
 
     public Mono<TaskDto> updateTaskStatus(String taskId, TaskStatus newStatus,
-                                          Long expectedVersion, String userId) {
-        return Mono.deferContextual(contextView -> // For Correlation ID
+            Long expectedVersion, String userId) {
+        return Mono.deferContextual(contextView
+                -> // For Correlation ID
                 repository.findById(taskId)
                         .flatMap(task -> {
                             // --- Optimistic Lock Check ---
@@ -156,21 +156,24 @@ public class TaskService {
     }
 
     public Mono<TaskDto> updateTaskCombined(String id, TaskDto dto, String userId) {
-        return Mono.deferContextual(contextView ->
-                repository.findById(id)
+        return Mono.deferContextual(contextView
+                -> repository.findById(id)
                         .flatMap(task -> {
                             // Optimistic‑lock
                             Long currentVersion = task.getVersion();
                             if (dto.getVersion() == null || !dto.getVersion().equals(currentVersion)) {
                                 return Mono.error(new ConflictException(
                                         "Version mismatch for task " + id));
-                            }
-
-                            // Apply all changes
+                            }                            // Apply all changes
                             task.setName(dto.getName());
                             task.setDescription(dto.getDescription());
-                            if (dto.getDueDate() != null) {
-                                task.setDueDate(dto.getDueDate().toInstant());
+                            if (dto.getDueDate() != null && !dto.getDueDate().trim().isEmpty()) {
+                                try {
+                                    task.setDueDate(Instant.parse(dto.getDueDate()));
+                                } catch (Exception e) {
+                                    // Skip invalid date format
+                                    task.setDueDate(null);
+                                }
                             } else {
                                 task.setDueDate(null);
                             }
@@ -202,8 +205,8 @@ public class TaskService {
             Long expectedVersion,
             String userId
     ) {
-        return Mono.deferContextual(ctx ->
-                repository.findById(taskId)
+        return Mono.deferContextual(ctx
+                -> repository.findById(taskId)
                         .flatMap(task -> {
                             if (expectedVersion == null || !expectedVersion.equals(task.getVersion())) {
                                 return Mono.error(new ConflictException("Version mismatch for task " + taskId));
@@ -225,38 +228,38 @@ public class TaskService {
     public Mono<TaskDto> assignTask(String taskId, String assigneeId, String actorId) {
         // Validate user existence before assignment
         return userWebClient.get()
-            .uri("/api/users/{id}", assigneeId)
-            .retrieve()
-            .bodyToMono(com.pm.commoncontracts.dto.UserDto.class)
-            .flatMap(userDto ->
-                repository.findById(taskId)
-                    .flatMap(task -> {
-                        task.setAssigneeId(assigneeId);
-                        task.setUpdatedBy(actorId);
-                        task.setUpdatedAt(Instant.now());
-                        return repository.save(task);
-                    })
-                    .flatMap(savedTask -> {
-                        TaskDto taskDto = TaskUtils.entityToDto(savedTask);
-                        return enrichTaskWithUserInfo(taskDto)
-                            .doOnNext(enrichedDto -> publishTaskAssignedEvent(savedTask, enrichedDto.getAssigneeName(), reactor.util.context.Context.empty()));
-                    })
-                    .doOnError(e -> log.error("Error assigning task", e))
-                    .onErrorResume(e -> Mono.error(new RuntimeException("Failed to assign task", e)))
-                    .switchIfEmpty(Mono.error(new ResourceNotFoundException("Task not found: " + taskId)))
-            )
-            .doOnError(e -> log.error("Error validating user existence", e))
-            .onErrorResume(e -> Mono.error(new RuntimeException("Failed to validate user existence", e)))
-            .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + assigneeId)));
+                .uri("/api/users/{id}", assigneeId)
+                .retrieve()
+                .bodyToMono(com.pm.commoncontracts.dto.UserDto.class)
+                .flatMap(userDto
+                        -> repository.findById(taskId)
+                        .flatMap(task -> {
+                            task.setAssigneeId(assigneeId);
+                            task.setUpdatedBy(actorId);
+                            task.setUpdatedAt(Instant.now());
+                            return repository.save(task);
+                        })
+                        .flatMap(savedTask -> {
+                            TaskDto taskDto = TaskUtils.entityToDto(savedTask);
+                            return enrichTaskWithUserInfo(taskDto)
+                                    .doOnNext(enrichedDto -> publishTaskAssignedEvent(savedTask, enrichedDto.getAssigneeName(), reactor.util.context.Context.empty()));
+                        })
+                        .doOnError(e -> log.error("Error assigning task", e))
+                        .onErrorResume(e -> Mono.error(new RuntimeException("Failed to assign task", e)))
+                        .switchIfEmpty(Mono.error(new ResourceNotFoundException("Task not found: " + taskId)))
+                )
+                .doOnError(e -> log.error("Error validating user existence", e))
+                .onErrorResume(e -> Mono.error(new RuntimeException("Failed to validate user existence", e)))
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("User not found: " + assigneeId)));
     }
 
     public Mono<Void> deleteTask(String taskId) {
-        return Mono.deferContextual(ctx ->
-                repository.findById(taskId)
+        return Mono.deferContextual(ctx
+                -> repository.findById(taskId)
                         .switchIfEmpty(Mono.error(new ResourceNotFoundException("Task not found: " + taskId)))
-                        .flatMap(task ->
-                                repository.delete(task)
-                                        .doOnSuccess(ignored -> publishTaskDeletedEvent(task, ctx))
+                        .flatMap(task
+                                -> repository.delete(task)
+                                .doOnSuccess(ignored -> publishTaskDeletedEvent(task, ctx))
                         )
                         .doOnError(e -> log.error("Error deleting task", e))
                         .onErrorResume(e -> Mono.error(new RuntimeException("Failed to delete task", e)))
@@ -264,7 +267,9 @@ public class TaskService {
     }
 
     /**
-     * Removes the given userId from all tasks where they are assigned as assignee.
+     * Removes the given userId from all tasks where they are assigned as
+     * assignee.
+     *
      * @param userId the user to remove
      * @return Mono<Void> when operation is complete
      */
@@ -273,7 +278,7 @@ public class TaskService {
                 .flatMap(task -> {
                     task.setAssigneeId(null);
                     return repository.save(task)
-                        .doOnSuccess(t -> log.info("Removed user {} as assignee from task {}", userId, task.getId()));
+                            .doOnSuccess(t -> log.info("Removed user {} as assignee from task {}", userId, task.getId()));
                 })
                 .doOnError(e -> log.error("Error removing user from all tasks", e))
                 .onErrorResume(e -> Mono.error(new RuntimeException("Failed to remove user from all tasks", e)))
@@ -283,7 +288,6 @@ public class TaskService {
     // ==============================
     // Event Publishing Helper Methods
     // ==============================
-
     private void publishTaskCreatedEvent(Task createdTask, ContextView contextView) {
         String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-create");
         try {
@@ -368,8 +372,8 @@ public class TaskService {
         log.info("Publishing TaskUpdatedEvent envelope. CorrID: {}", correlationId);
         kafkaTemplate
                 .send(taskEventsTopic, updatedTask.getId(), envelope)
-                .doOnError(e ->
-                        log.error("Failed to send TaskUpdatedEvent envelope. CorrID: {}", correlationId, e)
+                .doOnError(e
+                        -> log.error("Failed to send TaskUpdatedEvent envelope. CorrID: {}", correlationId, e)
                 )
                 .onErrorResume(e -> {
                     // TODO: Optionally send to dead-letter topic here
@@ -408,23 +412,23 @@ public class TaskService {
         try {
             TaskDto taskDto = TaskUtils.entityToDto(task);
             taskDto.setAssigneeName(assigneeName);
-            
+
             TaskAssignedEventPayload payload = new TaskAssignedEventPayload(taskDto);
             EventEnvelope<TaskAssignedEventPayload> envelope = new EventEnvelope<>(
-                correlationId,
-                TaskAssignedEventPayload.EVENT_TYPE,
-                serviceName,
-                payload
+                    correlationId,
+                    TaskAssignedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
             );
 
             kafkaTemplate.send(taskEventsTopic, task.getId(), envelope)
-                .doOnError(e -> log.error("Failed to send TaskAssignedEvent. CorrID: {}", correlationId, e))
-                .onErrorResume(e -> {
-                    // TODO: Optionally send to dead-letter topic here
-                    log.error("Unrecoverable error publishing TaskAssignedEvent. CorrID: {}", correlationId, e);
-                    return Mono.empty();
-                })
-                .subscribe();
+                    .doOnError(e -> log.error("Failed to send TaskAssignedEvent. CorrID: {}", correlationId, e))
+                    .onErrorResume(e -> {
+                        // TODO: Optionally send to dead-letter topic here
+                        log.error("Unrecoverable error publishing TaskAssignedEvent. CorrID: {}", correlationId, e);
+                        return Mono.empty();
+                    })
+                    .subscribe();
         } catch (Exception e) {
             log.error("Error preparing or sending TaskAssignedEvent. CorrID: {}", correlationId, e);
         }
@@ -450,4 +454,3 @@ public class TaskService {
                 });
     }
 }
-

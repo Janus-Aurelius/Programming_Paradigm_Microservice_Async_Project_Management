@@ -20,65 +20,66 @@ import lombok.Data;
 import lombok.NoArgsConstructor; // Changed from Date
 
 // import java.util.UUID; // Not used for id, MongoDB ObjectId is typical
-
 @Document(collection = "users")
 @Data
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
 public class User {
-        @Id
-        private String id; // MongoDB ObjectId will be stored as String
 
-        @NotBlank
-        @Size(min = 3, max = 50)
-        @Indexed(unique = true)
-        private String username;
+    @Id
+    private String id; // MongoDB ObjectId will be stored as String
 
-        @NotBlank
-        @Email
-        @Size(max = 100)
-        @Indexed(unique = true)        private String email;
-        
-        @NotBlank // Password hash should not be blank
-        @Field("passwordHash") // Map to MongoDB field name
-        private String hashedPassword; // Java field name
-        
-        @Builder.Default
-        private UserRole role = UserRole.ROLE_USER; // Single role per user - simplified architecture
+    @NotBlank
+    @Size(min = 3, max = 50)
+    @Indexed(unique = true)
+    private String username;
 
-        @Builder.Default
-        private boolean enabled = true; // Default to enabled
+    @NotBlank
+    @Email
+    @Size(max = 100)
+    @Indexed(unique = true)
+    private String email;
 
-        @Size(max = 50)
-        private String firstName;
+    @NotBlank // Password hash should not be blank
+    @Field("passwordHash") // Map to MongoDB field name
+    private String hashedPassword; // Java field name
 
-        @Size(max = 50)
-        private String lastName;
+    @Builder.Default
+    private UserRole role = UserRole.ROLE_USER; // Single role per user - simplified architecture        @Builder.Default
+    private boolean enabled = true; // Default to enabled
 
-        // fullName can be derived, consider if storing it is necessary
-        // If stored, ensure it's updated when firstName/lastName change.
-        // Alternatively, derive in DTOs or service layer.
-        // private String fullName;
+    @Builder.Default
+    private boolean active = true; // Default to active
 
-        @CreatedDate
-        private Instant createdAt;
+    @Size(max = 50)
+    private String firstName;
 
-        @LastModifiedDate
-        private Instant updatedAt;
+    @Size(max = 50)
+    private String lastName;
 
-        private Instant lastLogin; // Optional: for auditing        @Builder.Default
-        private boolean emailVerified = false; // Default to false
-        
-        @Builder.Default
-        private boolean locked = false; // Default to false
+    // fullName can be derived, consider if storing it is necessary
+    // If stored, ensure it's updated when firstName/lastName change.
+    // Alternatively, derive in DTOs or service layer.
+    // private String fullName;
+    @CreatedDate
+    private Instant createdAt;
 
-        @Size(max = 255)
-        private String profilePictureUrl; // Optional: for avatars
+    @LastModifiedDate
+    private Instant updatedAt;
 
-        // Optional: For auditing who created/modified the user record itself
-        // @CreatedBy
-        // private String createdByUserId;
-        // @LastModifiedBy
-        // private String lastModifiedByUserId;
+    private Instant lastLogin; // Optional: for auditing        @Builder.Default
+    private boolean emailVerified = false; // Default to false
+
+    @Builder.Default
+    private boolean locked = false; // Default to false
+
+    @Size(max = 255)
+    private String profilePictureUrl; // Optional: for avatars
+
+    // Optional: For auditing who created/modified the user record itself
+    // @CreatedBy
+    // private String createdByUserId;
+    // @LastModifiedBy
+    // private String lastModifiedByUserId;
 }

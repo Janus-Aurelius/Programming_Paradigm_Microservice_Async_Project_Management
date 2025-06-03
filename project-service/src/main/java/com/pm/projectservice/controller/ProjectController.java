@@ -1,10 +1,10 @@
 package com.pm.projectservice.controller;
 
-
 // Import DTO from the SHARED module
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
-import com.pm.commoncontracts.domain.ProjectStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.pm.commoncontracts.domain.ProjectStatus;
 import com.pm.commoncontracts.dto.ProjectDto;
 import com.pm.commoncontracts.dto.TaskDto;
 import com.pm.commoncontracts.requestDto.project.UpdateProjectStatusRequestDto;
@@ -66,8 +67,7 @@ public class ProjectController {
 
     @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping
-    public Flux<ProjectDto> getAllProjects()
-    {
+    public Flux<ProjectDto> getAllProjects() {
         log.info("Received request to get all projects");
         return projectService.getAllProjects();
     }
@@ -83,15 +83,13 @@ public class ProjectController {
 
     @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping(params = "name")
-    public Flux<ProjectDto> getProjectByName(@RequestParam String name)
-    {
+    public Flux<ProjectDto> getProjectByName(@RequestParam String name) {
         return projectService.getProjectByName(name);
     }
 
     @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping(params = "owner")
-    public Flux<ProjectDto> getProjectByOwner(@RequestParam String owner)
-    {
+    public Flux<ProjectDto> getProjectByOwner(@RequestParam String owner) {
         return projectService.getProjectByCreatedBy(owner);
     }
 
@@ -104,13 +102,13 @@ public class ProjectController {
 
     @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_UPDATE')")
     @PutMapping("/{id}")
-    public Mono<ResponseEntity<ProjectDto>> updateProject(@PathVariable String id, @Valid @RequestBody ProjectDto projectDto)
-    {
+    public Mono<ResponseEntity<ProjectDto>> updateProject(@PathVariable String id, @Valid @RequestBody ProjectDto projectDto) {
         log.info("Received request to update project with ID: {}", id);
         return projectService.updateProject(id, projectDto)
                 .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build());
     }
+
     @PreAuthorize("hasPermission(#projectId, 'Project', 'PRJ_READ')")
     @GetMapping("/{projectId}/tasks/ids")
     public Flux<String> getAllTaskIdsByProjectId(@PathVariable String projectId) {
@@ -163,10 +161,22 @@ public class ProjectController {
     @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_DELETE')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono<Void> deleteProject(@PathVariable String id)
-    {
+    public Mono<Void> deleteProject(@PathVariable String id) {
         log.info("Received request to delete project with ID: {}", id);
         return projectService.deleteProject(id);
+    }
+
+    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_READ')")
+    @GetMapping("/{id}/permissions/check")
+    public Mono<ResponseEntity<Map<String, Boolean>>> checkProjectPermissions(@PathVariable String id) {
+        log.info("Checking permissions for project ID: {}", id);
+        return projectService.getProjectById(id)
+                .map(project -> {
+                    Map<String, Boolean> permissions = new HashMap<>();
+                    permissions.put("hasAccess", true); // If we reach here, user has access
+                    return ResponseEntity.ok(permissions);
+                })
+                .defaultIfEmpty(ResponseEntity.notFound().build());
     }
 
 }

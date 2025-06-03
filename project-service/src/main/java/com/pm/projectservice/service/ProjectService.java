@@ -46,7 +46,7 @@ public class ProjectService {
 
     // Constructor injection
     public ProjectService(ProjectRepository projectRepository,
-                          ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate) {
+            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate) {
         this.projectRepository = projectRepository;
         this.kafkaTemplate = kafkaTemplate;
     }
@@ -142,18 +142,18 @@ public class ProjectService {
                 .bodyToMono(TaskDto.class)
                 .doOnError(e -> log.error("Error creating task for project: {}", projectId, e))
                 .onErrorResume(e -> Mono.error(new RuntimeException("Failed to create task for project", e)))
-                .flatMap(createdTask ->
-                        // 2. Add the created task's ID to the project
+                .flatMap(createdTask
+                        -> // 2. Add the created task's ID to the project
                         projectRepository.findById(projectId)
-                                .flatMap(project -> {
-                                    project.getTaskIds().add(createdTask.getId());
-                                    return projectRepository.save(project)
-                                            .thenReturn(createdTask);
-                                })
-                                .doOnError(e -> log.error("Error updating project with new task ID: {}", projectId, e))
-                                .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project with new task ID", e)))
-                                // 3. Publish event after both task creation and project update
-                                .doOnSuccess(savedTask -> publishProjectTaskCreatedEvent(savedTask, projectId))
+                        .flatMap(project -> {
+                            project.getTaskIds().add(createdTask.getId());
+                            return projectRepository.save(project)
+                                    .thenReturn(createdTask);
+                        })
+                        .doOnError(e -> log.error("Error updating project with new task ID: {}", projectId, e))
+                        .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project with new task ID", e)))
+                        // 3. Publish event after both task creation and project update
+                        .doOnSuccess(savedTask -> publishProjectTaskCreatedEvent(savedTask, projectId))
                 )
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in createTaskForProject, skipping element", throwable));
     }
@@ -184,7 +184,6 @@ public class ProjectService {
     // ==============================
     // Write operations (Transformed)
     // ==============================
-
     public Mono<ProjectDto> createProject(ProjectDto projectDto) {
         // Use deferContextual to access Reactor Context
         return Mono.deferContextual(contextView -> {
@@ -200,8 +199,8 @@ public class ProjectService {
 
     public Mono<ProjectDto> updateProject(String id, ProjectDto projectDto) {
         // Use deferContextual to access Reactor Context
-        return Mono.deferContextual(contextView ->
-                projectRepository.findById(id)
+        return Mono.deferContextual(contextView
+                -> projectRepository.findById(id)
                         .flatMap(existingProject -> {
                             existingProject.setName(projectDto.getName());
                             existingProject.setDescription(projectDto.getDescription());
@@ -218,7 +217,7 @@ public class ProjectService {
                                 existingProject.setEndDate(null);
                             }
                             existingProject.setMemberIds(projectDto.getMemberIds());
-                            existingProject.setPriority(ProjectPriority.valueOf(projectDto.getPriority()));
+                            existingProject.setPriority(projectDto.getPriority()); // Direct assignment, no valueOf needed
                             return projectRepository.save(existingProject)
                                     .doOnError(e -> log.error("Error updating project with ID: {}", id, e))
                                     .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project", e)))
@@ -281,6 +280,7 @@ public class ProjectService {
                     project.setName(dto.getName());
                     project.setDescription(dto.getDescription());
                     project.setStatus(dto.getStatus());
+                    project.setPriority(dto.getPriority()); // Update priority field
                     project.setCreatedBy(dto.getCreatedBy());
                     project.setAssignedTo(dto.getAssignedTo());
                     if (dto.getStartDate() != null) {
@@ -332,10 +332,10 @@ public class ProjectService {
 
     public Mono<Void> deleteProject(String id) {
         // Use deferContextual to access Reactor Context
-        return Mono.deferContextual(contextView ->
-                projectRepository.findById(id)
-                        .flatMap(projectToDelete ->
-                                projectRepository.deleteById(id).thenReturn(projectToDelete)
+        return Mono.deferContextual(contextView
+                -> projectRepository.findById(id)
+                        .flatMap(projectToDelete
+                                -> projectRepository.deleteById(id).thenReturn(projectToDelete)
                         )
                         .doOnError(e -> log.error("Error deleting project with ID: {}", id, e))
                         .onErrorResume(e -> Mono.error(new RuntimeException("Failed to delete project", e)))
@@ -351,9 +351,9 @@ public class ProjectService {
                 .flatMap(project -> {
                     project.getMemberIds().removeIf(id -> id.equals(userId));
                     return projectRepository.save(project)
-                        .doOnError(e -> log.error("Error removing user {} from project {}", userId, project.getId(), e))
-                        .onErrorResume(e -> Mono.error(new RuntimeException("Failed to remove user from project", e)))
-                        .doOnSuccess(p -> log.info("Removed user {} from project {}", userId, project.getId()));
+                            .doOnError(e -> log.error("Error removing user {} from project {}", userId, project.getId(), e))
+                            .onErrorResume(e -> Mono.error(new RuntimeException("Failed to remove user from project", e)))
+                            .doOnSuccess(p -> log.info("Removed user {} from project {}", userId, project.getId()));
                 })
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in removeUserFromAllProjects, skipping element", throwable))
                 .then();
@@ -362,7 +362,6 @@ public class ProjectService {
     // ==============================
     // Event Publishing Helper Methods
     // ==============================
-
     private void publishProjectCreatedEvent(Project createdProject, ContextView contextView) {
         String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-proj-create");
         try {

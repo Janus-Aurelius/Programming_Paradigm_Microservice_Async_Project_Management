@@ -2,6 +2,7 @@ package com.pm.commentservice.controller;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,10 +22,16 @@ import com.pm.commoncontracts.dto.CommentDto;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
+import java.util.Map;
+
+@Slf4j
 @RestController
 @RequestMapping("/comments")
 public class CommentController {
+
     private final CommentService commentService;
 
     public CommentController(CommentService commentService) {
@@ -33,13 +40,16 @@ public class CommentController {
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
-    }    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentDto, 'CMT_CREATE')")
+    }
+
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentDto, 'CMT_CREATE')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<CommentDto> createComment(@RequestBody CommentDto commentDto, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId, ServerHttpRequest request) {
         String userId = extractUserIdFromHeader(request);
         commentDto.setAuthorId(userId);
-        return commentService.createComment(commentDto, correlationId != null ? correlationId : "N/A");    }
+        return commentService.createComment(commentDto, correlationId != null ? correlationId : "N/A");
+    }
 
     @GetMapping
     public Flux<CommentDto> getAllComments(Pageable pageable) { // Or custom pagination params
@@ -84,5 +94,15 @@ public class CommentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public Mono<Void> deleteComment(@PathVariable String commentId, @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId) {
         return commentService.deleteComment(commentId, correlationId != null ? correlationId : "N/A");
+    }
+
+    @PreAuthorize("@commentPermissionEvaluator.hasPermission(authentication, #commentId, 'CMT_READ')")
+    @GetMapping("/{commentId}/permissions/check")
+    public Mono<ResponseEntity<Map<String, Boolean>>> checkCommentPermissions(@PathVariable String commentId) {
+        log.info("Checking permissions for comment ID: {}", commentId);
+        // Since we're using @PreAuthorize, if this method is reached, the user has permission
+        Map<String, Boolean> permissions = new HashMap<>();
+        permissions.put("hasAccess", true);
+        return Mono.just(ResponseEntity.ok(permissions));
     }
 }

@@ -1,8 +1,8 @@
 package com.pm.commoncontracts.dto;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.Map;
+
+import com.pm.commoncontracts.domain.NotificationChannel;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,20 +13,21 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 @Data
-public class NotificationDto{
-        String id;
-        String recipientUserId;
-        String eventType;
-        String message;
-        String entityType;
-        String entityId;
-        String channel;
-        Instant createdAt;
-        boolean isRead;
-        private LocalDateTime timestamp;
-        String event;
-        Map<String, Object> payload;
-        boolean read;
-        Instant readAt;
-        Long version;
+public class NotificationDto {
+
+    String id;
+    String recipientUserId;
+    String eventType;
+    String message;
+    String entityType;
+    String entityId;
+    NotificationChannel channel;
+    String createdAt;
+    boolean isRead;
+    String timestamp;
+    String event;
+    Map<String, Object> payload;
+    boolean read;
+    String readAt;
+    Long version;
 }
