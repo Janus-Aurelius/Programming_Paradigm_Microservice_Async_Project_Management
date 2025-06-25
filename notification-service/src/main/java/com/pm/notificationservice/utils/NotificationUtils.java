@@ -5,14 +5,24 @@ import com.pm.notificationservice.model.Notification;
 
 public class NotificationUtils {
 
+    private static String sanitizeObjectIdString(String id) {
+        if (id == null) {
+            return null;
+        }
+        if (id.startsWith("ObjectId(\"") && id.endsWith("\")")) {
+            return id.substring(10, id.length() - 2);
+        }
+        return id;
+    }
+
     public static NotificationDto entityToDto(Notification notification) {
         return NotificationDto.builder()
-                .id(notification.getId())
-                .recipientUserId(notification.getRecipientUserId())
+                .id(sanitizeObjectIdString(notification.getId()))
+                .recipientUserId(sanitizeObjectIdString(notification.getRecipientUserId()))
                 .event(notification.getEvent() != null ? notification.getEvent().name() : null)
                 .eventType(notification.getEvent() != null ? notification.getEvent().name() : null)
                 .entityType(notification.getEntityType() != null ? notification.getEntityType().name() : null)
-                .entityId(notification.getEntityId())
+                .entityId(sanitizeObjectIdString(notification.getEntityId()))
                 .channel(notification.getChannel()) // Direct enum assignment
                 .payload(notification.getPayload())
                 .message(notification.getMessage())

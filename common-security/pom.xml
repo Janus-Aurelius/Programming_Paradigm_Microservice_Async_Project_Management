@@ -4,9 +4,9 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.pm</groupId> <!-- Your parent groupId -->
-        <artifactId>project-management-parent</artifactId> <!-- Your parent artifactId -->
+        <artifactId>project-management-docker-build-parent</artifactId> <!-- Docker build parent -->
         <version>0.0.1-SNAPSHOT</version> <!-- Your parent version -->
-        <relativePath>../pom.xml</relativePath> <!-- Path to the parent pom -->
+        <relativePath>../pom-docker.xml</relativePath> <!-- Path to the Docker parent pom -->
     </parent>
     <artifactId>common-security</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -74,7 +74,37 @@
 
     <build>
         <plugins>
-            <!-- Removed spring-boot-maven-plugin because this is a library module -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <!-- Version inherited from parent -->
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <!-- Ensure this version matches the dependency -->
+                            <version>${lombok.version}</version>
+                        </path>
+                        <!-- Add other annotation processors if needed -->
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions> <!-- Added executions -->
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <configuration>
+                            <skip>true</skip> <!-- Skip repackaging for this module -->
+                        </configuration>
+                    </execution>
+                </executions> <!-- End added executions -->
+            </plugin>
         </plugins>
     </build>
 

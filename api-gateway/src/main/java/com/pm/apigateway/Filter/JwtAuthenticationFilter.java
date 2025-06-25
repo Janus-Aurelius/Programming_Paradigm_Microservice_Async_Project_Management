@@ -5,6 +5,7 @@ import javax.crypto.SecretKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -22,6 +23,7 @@ import io.jsonwebtoken.security.Keys;
 import reactor.core.publisher.Mono;
 
 @Component
+@ConditionalOnProperty(name = "jwt.enabled", havingValue = "true", matchIfMissing = false)
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     @Value("${jwt.secret:my-very-secret-key-for-jwt-signing}")
@@ -43,12 +45,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         log.info("JWT Filter processing request: {} {}", method, path);
 
         // Allow requests without JWT for login and test endpoints
-        if (path.startsWith("/api/users/auth/login") ||
-            path.startsWith("/api/users/auth/register") ||
-            (path.startsWith("/api/users") && "POST".equals(method)) ||
-            path.contains("/test/") ||
-            path.endsWith("/test") ||
-            path.startsWith("/test")) {
+        if (path.startsWith("/api/users/auth/login")
+                || path.startsWith("/api/users/auth/register")
+                || (path.startsWith("/api/users") && "POST".equals(method))
+                || path.contains("/test/")
+                || path.endsWith("/test")
+                || path.startsWith("/test")) {
             log.info("Request allowed without JWT: {} {}", method, path);
             return chain.filter(exchange);
         }
@@ -62,7 +64,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         String token = authHeader.substring(7);
         Claims claims;
-        
+
         try {
             SecretKey key = getSigningKey();
             claims = Jwts.parserBuilder()
@@ -73,7 +75,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
             String userId = claims.getSubject();
             String userRole = (String) claims.get("role"); // Single role as string
-            
+
             log.info("JWT claims - userId: {}, role: {}", userId, userRole);
 
             if (!isUserActive(userId)) {
@@ -94,12 +96,13 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
             if (requiredRole != null) {
                 if (userRole == null || !userRole.equals(requiredRole)) {
-                    log.warn("Access denied for user {} with role {} to path {}. Required role: {}", 
+                    log.warn("Access denied for user {} with role {} to path {}. Required role: {}",
                             userId, userRole, path, requiredRole);
                     exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
                     return exchange.getResponse().setComplete();
                 }
-            }            log.info("User {} with role {} accessed {}", userId, userRole, path);
+            }
+            log.info("User {} with role {} accessed {}", userId, userRole, path);
 
             // Forward user info to downstream services
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
@@ -107,12 +110,12 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     .header("X-User-Email", (String) claims.get("email"))
                     .header("X-User-Role", userRole != null ? userRole : "ROLE_USER")
                     .build();
-            
-            log.info("Forwarding headers to downstream: X-User-Id={}, X-User-Email={}, X-User-Role={}", 
+
+            log.info("Forwarding headers to downstream: X-User-Id={}, X-User-Email={}, X-User-Role={}",
                     userId, claims.get("email"), userRole != null ? userRole : "ROLE_USER");
-                    
+
             return chain.filter(exchange.mutate().request(mutatedRequest).build());
-            
+
         } catch (io.jsonwebtoken.ExpiredJwtException e) {
             log.warn("JWT token has expired: {}", e.getMessage());
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);

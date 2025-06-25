@@ -1,7 +1,6 @@
 server:
   port: 8085
-  servlet:
-    context-path: /ws # Corrected context path, assuming you meant /ws
+
 
 spring:
   application:

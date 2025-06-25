@@ -66,9 +66,16 @@ public class NotificationService {
         return Mono.deferContextual(contextView -> {
             String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-event");
             logger.debug("Processing incoming event. Type: {}, CorrID: {}", incomingEnvelope.eventType(), correlationId);
-
             return generateNotificationsFromEvent(incomingEnvelope, correlationId)
-                    .flatMap(notification -> saveAndTriggerDispatch(notification, correlationId))
+                    .flatMap(notification -> saveAndTriggerDispatch(notification, correlationId)
+                        .doOnError(e -> logger.error("Error saving/dispatching notification. CorrID: {}", correlationId, e))
+                        .onErrorResume(e -> {
+                            // TODO: Optionally send to dead-letter topic here
+                            logger.error("Unrecoverable error saving/dispatching notification. CorrID: {}", correlationId, e);
+                            return Mono.empty();
+                        })
+                    )
+                    .onErrorContinue((throwable, o) -> logger.error("Unhandled error in notification processing, skipping element", throwable))
                     .then();
         });
     }
@@ -336,6 +343,11 @@ public class NotificationService {
                 })
                 .doOnError(e -> logger.error("Failed to save notification for user {}. CorrID: {}", 
                     notification.getRecipientUserId(), correlationId, e))
+                .onErrorResume(e -> {
+                    // TODO: Optionally send to dead-letter topic here
+                    logger.error("Unrecoverable error saving notification. CorrID: {}", correlationId, e);
+                    return Mono.empty();
+                })
                 .then();
     }
 
@@ -353,12 +365,20 @@ public class NotificationService {
         kafkaTemplate.send(dispatchTopic, notification.getRecipientUserId(), dispatchEnvelope)
                 .doOnError(e -> logger.error("Failed to publish NotificationToSendEvent. NotifID: {}, CorrID: {}", 
                     notification.getId(), correlationId, e))
+                .onErrorResume(e -> {
+                    // TODO: Optionally send to dead-letter topic here
+                    logger.error("Unrecoverable error publishing NotificationToSendEvent. CorrID: {}", correlationId, e);
+                    return Mono.empty();
+                })
                 .subscribe();
     }
 
     public Flux<NotificationDto> getNotificationsForUser(String recipientUserId) {
-        return notificationRepository.findByUserId(recipientUserId)
-                .map(NotificationUtils::entityToDto);
+        return notificationRepository.findByrecipientUserId(recipientUserId)
+                .map(NotificationUtils::entityToDto)
+                .doOnError(e -> logger.error("Error fetching notifications for user: {}", recipientUserId, e))
+                .onErrorResume(e -> Flux.error(new RuntimeException("Failed to fetch notifications for user", e)))
+                .onErrorContinue((throwable, o) -> logger.error("Unhandled error in getNotificationsForUser, skipping element", throwable));
     }
 
     public Mono<Void> markNotificationRead(String notificationId, String userId) {
@@ -368,6 +388,8 @@ public class NotificationService {
                     notification.setRead(true);
                     return notificationRepository.save(notification).then();
                 })
+                .doOnError(e -> logger.error("Error marking notification as read. NotifID: {}", notificationId, e))
+                .onErrorResume(e -> Mono.error(new RuntimeException("Failed to mark notification as read", e)))
                 .then();
     }
 }

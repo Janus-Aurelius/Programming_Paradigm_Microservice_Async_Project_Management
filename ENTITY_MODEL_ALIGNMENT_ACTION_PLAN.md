@@ -69,7 +69,7 @@ public void setPriority(String priority) { this.priority = priority; }
 private String channel;
 
 // CHANGE TO:
-private NotificationChannel channel;
+private final NotificationChannel channel;
 ```
 
 **Import Required**:

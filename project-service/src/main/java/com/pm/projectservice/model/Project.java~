@@ -1,0 +1,89 @@
+package com.pm.projectservice.model;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+import com.pm.commoncontracts.domain.ProjectPriority;
+import com.pm.commoncontracts.domain.ProjectStatus;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.mongodb.core.index.Indexed;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Document(collection = "projects") // Consistent plural naming
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class Project {
+
+    @Id
+    private String id;
+
+    @NotBlank
+    @Size(min = 3, max = 100)
+    @Indexed(unique = true) // If project names must be unique
+    private String name;
+
+    @Size(max = 5000)
+    private String description;
+
+    @NotNull
+    private ProjectStatus status = ProjectStatus.PLANNING; // Provide a default
+
+    /** User who created / owns the project */
+    @NotBlank
+    @Indexed
+    private String ownerId; // Renamed from createdBy in V1 for clarity if it means owner
+
+    /** Optional list of additional project managers / leads */
+    @Builder.Default
+    private List<String> managerIds = new ArrayList<>();
+
+    private Instant startDate; // Consider if this should be @NotNull
+    private Instant endDate;
+
+    @NotNull
+    private ProjectPriority priority = ProjectPriority.MEDIUM; // Provide a default
+
+    /** Direct project members (for ACLs, mentions, etc.) */
+    @Builder.Default
+    private List<String> memberIds = new ArrayList<>();
+
+    // taskIds from V1: Generally, it's better for tasks to reference projects
+    // (Task.projectId) than for projects to hold a list of taskIds.
+    // This avoids unbounded arrays in the Project document and simplifies queries.
+    // If you need to fetch tasks for a project, query Task collection by projectId.
+    // @Builder.Default
+    // private List<String> taskIds = new ArrayList<>();
+
+    /* ---------- auditing ---------- */
+    @CreatedDate
+    private Instant createdAt;
+
+    @CreatedBy // User ID from SecurityContext via AuditorAware
+    private String createdBy;
+
+    @LastModifiedDate
+    private Instant updatedAt;
+
+    @LastModifiedBy // User ID from SecurityContext via AuditorAware
+    private String lastModifiedBy;
+
+    /* ---------- optimistic locking ---------- */
+    @Version
+    private Long version;
+}

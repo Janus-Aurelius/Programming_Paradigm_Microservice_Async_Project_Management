@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -52,7 +53,9 @@ public class CommentController {
     }
 
     @GetMapping
-    public Flux<CommentDto> getAllComments(Pageable pageable) { // Or custom pagination params
+    public Flux<CommentDto> getAllComments(@RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
         return commentService.getAllComments(pageable);
     }
 

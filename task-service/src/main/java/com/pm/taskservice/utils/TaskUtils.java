@@ -5,17 +5,27 @@ import com.pm.taskservice.model.Task;
 
 public class TaskUtils {
 
+    private static String sanitizeObjectIdString(String id) {
+        if (id == null) {
+            return null;
+        }
+        if (id.startsWith("ObjectId(\"") && id.endsWith("\")")) {
+            return id.substring(10, id.length() - 2);
+        }
+        return id;
+    }
+
     public static TaskDto entityToDto(com.pm.taskservice.model.Task task) {
         TaskDto.TaskDtoBuilder builder = TaskDto.builder()
-                .id(task.getId())
-                .projectId(task.getProjectId())
+                .id(sanitizeObjectIdString(task.getId()))
+                .projectId(sanitizeObjectIdString(task.getProjectId()))
                 .name(task.getName())
                 .status(task.getStatus())
                 .priority(task.getPriority())
                 .description(task.getDescription())
-                .createdBy(task.getCreatedBy())
-                .updatedBy(task.getUpdatedBy())
-                .assigneeId(task.getAssigneeId())
+                .createdBy(sanitizeObjectIdString(task.getCreatedBy()))
+                .updatedBy(sanitizeObjectIdString(task.getUpdatedBy()))
+                .assigneeId(sanitizeObjectIdString(task.getAssigneeId()))
                 .tags(task.getTags())
                 .version(task.getVersion());
 

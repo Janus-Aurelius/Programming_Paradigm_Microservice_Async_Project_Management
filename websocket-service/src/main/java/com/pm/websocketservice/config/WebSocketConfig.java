@@ -23,6 +23,7 @@ public class WebSocketConfig {
     public HandlerMapping webSocketHandlerMapping() { // Renamed bean method for clarity
         Map<String, WebSocketHandler> map = new HashMap<>();
         // Map the URL path to your specific handler instance
+        // Map the full path expected from the gateway (no context-path is configured in reactive Netty)
         map.put("/ws/updates", projectWebSocketHandler);
 
         SimpleUrlHandlerMapping handlerMapping = new SimpleUrlHandlerMapping();

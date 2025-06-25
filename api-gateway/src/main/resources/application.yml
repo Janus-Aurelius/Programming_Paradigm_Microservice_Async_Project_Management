@@ -49,13 +49,13 @@ spring:
             - StripPrefix=1
 
         - id: websocket_service_route
-          uri: ws://websocket-service:8085/ws
+          uri: ws://websocket-service:8085
           predicates:
-            - Path=/ws/updates/**
-          filters:
-            - StripPrefix=1
+            - Path=/ws/updates
 
+# JWT disabled by default for easier development
 jwt:
+  enabled: false
   secret: my-very-secret-key-for-jwt-signing
 
 logging:
@@ -78,7 +78,6 @@ spring:
   config:
     activate:
       on-profile: docker
-
 ---
 spring:
   config:

@@ -1,14 +1,15 @@
 package com.pm.userservice.controller;
 
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.pm.commoncontracts.domain.UserRole;
@@ -38,15 +40,16 @@ import reactor.core.publisher.Mono;
 @RequestMapping("")
 public class UserController {
 
+    @Value("${jwt.enabled:true}")
+    private boolean jwtEnabled;
+
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userService;
-    private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    public UserController(UserService userService, PasswordEncoder passwordEncoder, JwtUtil jwtUtil) {
+    public UserController(UserService userService, JwtUtil jwtUtil) {
         this.userService = userService;
-        this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
 
@@ -93,8 +96,8 @@ public class UserController {
                             .toUri();
                     return ResponseEntity.created(location).body(createdUser);
                 })
-                .onErrorResume(ConflictException.class, e ->
-                        Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
+                .onErrorResume(ConflictException.class, e
+                        -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
                 );
     }
 
@@ -104,11 +107,11 @@ public class UserController {
         log.info("Updating user with id: {}", id);
         return userService.updateUser(id, userDto)
                 .map(ResponseEntity::ok)
-                .onErrorResume(ResourceNotFoundException.class, e ->
-                        Mono.just(ResponseEntity.notFound().build())
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
                 )
-                .onErrorResume(ConflictException.class, e ->
-                        Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
+                .onErrorResume(ConflictException.class, e
+                        -> Mono.just(ResponseEntity.status(HttpStatus.CONFLICT).build())
                 );
     }
 
@@ -118,8 +121,8 @@ public class UserController {
         log.info("Updating profile for user with id: {}", id);
         return userService.updateUserProfile(id, profileDto)
                 .map(ResponseEntity::ok)
-                .onErrorResume(ResourceNotFoundException.class, e ->
-                        Mono.just(ResponseEntity.notFound().build())
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
                 );
     }
 
@@ -129,8 +132,8 @@ public class UserController {
         log.info("Changing password for user with id: {}", id);
         return userService.changeUserPassword(id, passwordDto.getPassword())
                 .thenReturn(ResponseEntity.noContent().<Void>build())
-                .onErrorResume(ResourceNotFoundException.class, e ->
-                        Mono.just(ResponseEntity.notFound().build())
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
                 );
     }
 
@@ -140,8 +143,8 @@ public class UserController {
         log.info("Deleting user with id: {}", id);
         return userService.deleteUser(id)
                 .thenReturn(ResponseEntity.noContent().<Void>build())
-                .onErrorResume(ResourceNotFoundException.class, e ->
-                        Mono.just(ResponseEntity.notFound().build())
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
                 );
     }
 
@@ -149,7 +152,7 @@ public class UserController {
     public Mono<ResponseEntity<JwtResponse>> login(@RequestBody LoginRequest loginRequest) {
         return userService.getUserEntityByEmailForAuthentication(loginRequest.getEmail())
                 .flatMap(user -> {
-                    if (passwordEncoder.matches(loginRequest.getPassword(), user.getHashedPassword())) {
+                    if (loginRequest.getPassword().equals(user.getPassword())) {
                         String role = UserUtils.getRoleAsString(user);
                         String token = jwtUtil.generateToken(
                                 user.getId(),
@@ -181,10 +184,10 @@ public class UserController {
                     if (userDto.getPassword() == null) {
                         return Mono.just(ResponseEntity.ok("ERROR: Password is null in DTO"));
                     }
-                    
-                    boolean matches = passwordEncoder.matches(loginRequest.getPassword(), userDto.getPassword());
+
+                    boolean matches = loginRequest.getPassword().equals(userDto.getPassword());
                     log.info("Password match result: {}", matches);
-                    
+
                     if (matches) {
                         return Mono.just(ResponseEntity.ok("SUCCESS: Login would succeed"));
                     } else {
@@ -217,12 +220,12 @@ public class UserController {
     @PostMapping("/test/mock-login")
     public Mono<ResponseEntity<String>> mockLogin(@RequestBody LoginRequest loginRequest) {
         log.info("Mock login test for: {}", loginRequest.getEmail());
-        
+
         // Mock user with plaintext password for testing
         if ("admin@test.com".equals(loginRequest.getEmail()) && "12345".equals(loginRequest.getPassword())) {
             return Mono.just(ResponseEntity.ok("SUCCESS: Mock login successful with plaintext password"));
         }
-        
+
         // Test with real database but plaintext comparison
         return userService.getUserByEmailForAuthentication(loginRequest.getEmail())
                 .flatMap(userDto -> {
@@ -230,14 +233,13 @@ public class UserController {
                     if (userDto.getPassword() == null) {
                         return Mono.just(ResponseEntity.ok("ERROR: Password is null in DTO"));
                     }
-                    
-                    // Display the actual hash for debugging
-                    String result = String.format("User found: %s, Stored hash: %s, Plaintext match: %s, BCrypt match: %s", 
-                        userDto.getEmail(),
-                        userDto.getPassword(),
-                        userDto.getPassword().equals(loginRequest.getPassword()),
-                        passwordEncoder.matches(loginRequest.getPassword(), userDto.getPassword()));
-                    
+
+                    // Display the actual password for debugging
+                    String result = String.format("User found: %s, Stored password: %s, Plaintext match: %s",
+                            userDto.getEmail(),
+                            userDto.getPassword(),
+                            userDto.getPassword().equals(loginRequest.getPassword()));
+
                     return Mono.just(ResponseEntity.ok(result));
                 })
                 .onErrorResume(ResourceNotFoundException.class, e -> {
@@ -254,22 +256,53 @@ public class UserController {
     @PostMapping("/test/create-test-user")
     public Mono<ResponseEntity<String>> createTestUser() {
         log.info("Creating test user with known credentials");
-        
+
         UserDto testUser = new UserDto();
         testUser.setFirstName("Test");
         testUser.setLastName("User");
         testUser.setEmail("testuser@example.com");
         testUser.setPassword("testpassword123");
         testUser.setRole(UserRole.ROLE_DEVELOPER);
-        
+
         return userService.createUser(testUser)
                 .map(createdUser -> ResponseEntity.ok("SUCCESS: Test user created with email: " + createdUser.getEmail() + " and password: testpassword123"))
-                .onErrorResume(ConflictException.class, e ->
-                        Mono.just(ResponseEntity.ok("INFO: Test user already exists"))
+                .onErrorResume(ConflictException.class, e
+                        -> Mono.just(ResponseEntity.ok("INFO: Test user already exists"))
                 )
                 .onErrorResume(Exception.class, e -> {
                     log.error("Error creating test user", e);
                     return Mono.just(ResponseEntity.ok("ERROR: " + e.getMessage()));
                 });
+    }
+
+    /**
+     * Development mode test endpoint - verifies JWT is disabled
+     */
+    @GetMapping("/test/dev-mode")
+    public Mono<ResponseEntity<Map<String, Object>>> testDevMode(ServerWebExchange exchange) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Development mode endpoint accessed successfully");
+        response.put("jwtEnabled", jwtEnabled);
+        response.put("timestamp", System.currentTimeMillis());
+
+        // Check for development headers
+        Map<String, String> headers = new HashMap<>();
+        String userId = exchange.getRequest().getHeaders().getFirst("X-User-Id");
+        String userEmail = exchange.getRequest().getHeaders().getFirst("X-User-Email");
+        String userRole = exchange.getRequest().getHeaders().getFirst("X-User-Role");
+
+        if (userId != null) {
+            headers.put("X-User-Id", userId);
+        }
+        if (userEmail != null) {
+            headers.put("X-User-Email", userEmail);
+        }
+        if (userRole != null) {
+            headers.put("X-User-Role", userRole);
+        }
+        response.put("devHeaders", headers);
+
+        log.info("Development mode test endpoint accessed - JWT enabled: {}", jwtEnabled);
+        return Mono.just(ResponseEntity.ok(response));
     }
 }

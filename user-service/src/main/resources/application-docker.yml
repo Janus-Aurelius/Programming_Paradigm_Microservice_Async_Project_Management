@@ -1,0 +1,39 @@
+# Docker profile configuration for User Service
+server:
+  port: 8083
+  servlet:
+    context-path: /api/users
+
+spring:
+  application:
+    name: user-service
+  data:
+    mongodb:
+      uri: mongodb://mongo:27017/userdb
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.trusted.packages: " com.pm.commoncontracts.*"
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      group-id: user-service-group
+      auto-offset-reset: earliest
+      enable-auto-commit: true
+      properties:
+        spring.json.trusted.packages: " com.pm.commoncontracts.*"
+
+# JWT disabled by default for Docker development
+jwt:
+  enabled: ${JWT_ENABLED:false}
+  secret: ${JWT_SECRET:my-very-secret-key-for-jwt-signing}
+
+logging:
+  level:
+    root: INFO
+    com.pm.userservice: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

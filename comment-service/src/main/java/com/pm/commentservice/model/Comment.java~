@@ -1,0 +1,59 @@
+package com.pm.commentservice.model;
+
+
+import com.pm.commoncontracts.domain.ParentType;
+import jakarta.validation.constraints.Size;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.mongodb.config.EnableMongoAuditing;
+import org.springframework.data.mongodb.core.index.TextIndexed;
+import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
+
+import java.time.Instant;
+@Document(collection = "comments")
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@EnableMongoAuditing   // add once in @Configuration
+public class Comment {
+
+    @Id
+    private String id;
+
+    /* ------- contextual linkage ------- */
+    @Indexed
+    private String parentId;        // e.g. Task ID or Project ID
+
+    @Indexed
+    private ParentType parentType;  // TASK, PROJECT, etc.
+
+    private String parentCommentId; // null for top-level; supports threaded replies
+
+    /* ------- author ------- */
+    private String userId;          // author’s user id
+    private String displayName;     // capture at post time (optional)
+
+    /* ------- content ------- */
+    @TextIndexed                  // enables Mongo full-text search
+    @Size(max = 4_096)            // guard against abuse
+    private String content;
+
+    /* ------- timestamps & versioning ------- */
+    @CreatedDate
+    private Instant createdAt;
+
+    @LastModifiedDate
+    private Instant updatedAt;
+
+    @Version
+    private Long version;          // optimistic locking
+
+    /* ------- soft delete & moderation (optional) ------- */
+    private boolean deleted;       // for GDPR / audit compliance
+}
+

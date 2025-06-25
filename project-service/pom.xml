@@ -4,9 +4,9 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.pm</groupId> <!-- Your parent groupId -->
-        <artifactId>project-management-parent</artifactId> <!-- Your parent artifactId -->
+        <artifactId>project-management-parent</artifactId> <!-- Main parent -->
         <version>0.0.1-SNAPSHOT</version> <!-- Your parent version -->
-        <relativePath>../pom.xml</relativePath> <!-- Path to the parent pom -->
+        <relativePath>../pom.xml</relativePath> <!-- Path to the main parent pom -->
     </parent>
     <artifactId>project-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -50,7 +50,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <scope>provided</scope> <!-- Changed scope -->
+            <scope>provided</scope>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -121,7 +121,6 @@
         <dependency>
             <groupId>com.pm</groupId>
             <artifactId>common-security</artifactId>
-            <version>${project.version}</version>
         </dependency>
     </dependencies>
 
@@ -130,18 +129,15 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <!-- Version inherited from parent -->
-                <configuration> <!-- Added configuration -->
+                <configuration>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
-                            <!-- Ensure this version matches the dependency -->
-                            <version>${lombok.version}</version> 
+                            <version>${lombok.version}</version>
                         </path>
-                        <!-- Add other annotation processors if needed -->
                     </annotationProcessorPaths>
-                </configuration> <!-- End added configuration -->
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

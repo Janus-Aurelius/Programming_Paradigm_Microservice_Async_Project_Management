@@ -4,9 +4,9 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.pm</groupId> <!-- Your parent groupId -->
-        <artifactId>project-management-parent</artifactId> <!-- Your parent artifactId -->
+        <artifactId>project-management-parent</artifactId> <!-- Main parent -->
         <version>0.0.1-SNAPSHOT</version> <!-- Your parent version -->
-        <relativePath>../pom.xml</relativePath> <!-- Path to the parent pom -->
+        <relativePath>../pom.xml</relativePath> <!-- Path to the main parent pom -->
     </parent>
     <artifactId>user-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -53,7 +53,6 @@
         <dependency>
             <groupId>com.pm</groupId>
             <artifactId>common-security</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>jakarta.validation</groupId>

@@ -3,10 +3,10 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.pm</groupId> <!-- Your parent groupId -->
-        <artifactId>project-management-parent</artifactId> <!-- Your parent artifactId -->
-        <version>0.0.1-SNAPSHOT</version> <!-- Your parent version -->
-        <relativePath>../pom.xml</relativePath> <!-- Path to the parent pom -->
+        <groupId>com.pm</groupId>
+        <artifactId>project-management-docker-build-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+        <relativePath>../pom-docker.xml</relativePath>
     </parent>
     <artifactId>common-contracts</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -36,7 +36,6 @@
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
-            <version>2.18.3</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

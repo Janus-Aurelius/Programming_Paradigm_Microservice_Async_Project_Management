@@ -1,46 +1,76 @@
-# Stage 1: Build the application
-FROM eclipse-temurin:17-jdk AS builder
+# STAGE 1: Build shared libraries (common-contracts, common-security)
+FROM maven:3.9.6-eclipse-temurin-17 AS shared-libs-builder
+LABEL stage=shared-libs-builder
 
-# Set base working directory
-WORKDIR /workspace
+WORKDIR /build
 
-# --- Copy ALL necessary source code ---
-# Copy parent pom from the context root
+# Copy the DEDICATED Docker build parent POM for shared libraries
+# This pom-docker.xml should ONLY list common-contracts and common-security as modules.
+COPY pom-docker.xml ./pom-docker.xml
+
+# Copy ONLY the poms and src for modules defined in pom-docker.xml
+# IMPORTANT: common-contracts/pom.xml and common-security/pom.xml on your filesystem
+# MUST have their <parent> section refer to:
+#   <artifactId>project-management-docker-build-parent</artifactId>
+#   <relativePath>../pom-docker.xml</relativePath>
+COPY common-contracts/pom.xml ./common-contracts/
+COPY common-security/pom.xml ./common-security/
+COPY common-contracts/src ./common-contracts/src
+COPY common-security/src ./common-security/src
+
+# Build and install shared modules to local .m2 repository.
+# Maven uses /build/pom.xml (which is pom-docker.xml) as the root.
+# Since pom-docker.xml only lists common-contracts and common-security,
+# Maven will build exactly these two.
+RUN mvn clean install -f pom-docker.xml -DskipTests -B
+
+# STAGE 2: Build the project-service application
+FROM maven:3.9.6-eclipse-temurin-17 AS app-builder
+LABEL stage=app-builder
+
+WORKDIR /build
+
+# Copy the local Maven repository from the shared-libs-builder stage.
+# This contains the compiled .jar files for common-contracts and common-security.
+COPY --from=shared-libs-builder /root/.m2 /root/.m2
+
+# Copy the MAIN project parent POM (the one that lists ALL modules).
+# IMPORTANT: This is your actual pom.xml from the project root.
 COPY pom.xml ./pom.xml
 
-# Copy common modules from the context root
-COPY common-contracts ./common-contracts
-COPY common-security ./common-security
+# Copy the specific service's POM and source code.
+# IMPORTANT: project-service/pom.xml on your filesystem MUST have its <parent> section refer to:
+#   <artifactId>project-management-parent</artifactId> (your main parent)
+#   <relativePath>../pom.xml</relativePath> (pointing to the main pom.xml)
+COPY project-service/pom.xml ./project-service/
+COPY project-service/src ./project-service/src
 
-# Copy ALL service directories that are modules defined in the parent pom.xml
-# This is needed so Maven can find and build everything.
-COPY api-gateway ./api-gateway
-COPY comment-service ./comment-service
-COPY notification-service ./notification-service
-COPY project-service ./project-service
-COPY task-service ./task-service
-COPY user-service ./user-service
-COPY websocket-service ./websocket-service
-# Add any other modules if they exist and are part of the build
+# Copy the POMs of the shared libraries again. This helps Maven understand the
+# full reactor if needed, though the actual artifacts will be pulled from the .m2.
+COPY common-contracts/pom.xml ./common-contracts/
+COPY common-security/pom.xml ./common-security/
 
-# --- Build ALL Modules ---
-# Run the full multi-module build from the root (/workspace)
-# Use the mvnw script from one of the modules (e.g., project-service)
-# The '-f pom.xml' explicitly tells Maven to use the root POM for module discovery.
-# This command will build common-contracts, common-security first and install them
-# into the builder container's local Maven repository before building the dependent services.
-RUN chmod +x project-service/mvnw && ./project-service/mvnw -f pom.xml install -DskipTests
+# Build the project-service application.
+# Maven uses /build/pom.xml (your main project parent) as the root.
+# It will find common-contracts and common-security in the .m2 repo copied earlier.
+# Using -f to target the specific service POM is robust.
+RUN mvn clean package -f project-service/pom.xml -DskipTests -B
 
-# Stage 2: Create the final lightweight image
-FROM eclipse-temurin:17-jre
+# STAGE 3: Runtime stage
+FROM eclipse-temurin:17-jre-alpine
+LABEL stage=runtime
+
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
 WORKDIR /app
 
-# Copy ONLY the specific target JAR for *this* service from the builder stage
-# The path inside the builder is /workspace/project-service/target/
-COPY --from=builder /workspace/project-service/target/*.jar app.jar
+COPY --from=app-builder /build/project-service/target/*.jar app.jar
 
-# Expose the correct port for this service
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
 EXPOSE 8082
 
-# Set the entrypoint to run the application
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]

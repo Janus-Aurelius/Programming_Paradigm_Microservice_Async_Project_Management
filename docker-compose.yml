@@ -1,5 +1,6 @@
-version: '3.8'
+version: "3.8"
 
+# Optimized Docker Compose for faster builds and better resource utilization
 services:
   mongo:
     image: mongo:5
@@ -8,9 +9,17 @@ services:
     ports:
       - "27017:27017"
     volumes:
+      # Mount initialization scripts
+      - ./database-schema/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+      # OPTION A: Comment out the next line for auto-reset (data won't persist)
       - mongo_data:/data/db
+      # OPTION B: Uncomment next line instead of above for temporary storage (auto-reset)
+      # - /tmp/mongo_data:/data/db
     networks:
       - project_management_default
+    environment:
+      # Development mode - no authentication required
+      - MONGO_INITDB_DATABASE=userdb
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -34,13 +43,13 @@ services:
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      
+
       # --- Cluster ID ---
       - KAFKA_KRAFT_CLUSTER_ID=pbaqgy9HSgyg6xYWPX020A
-      
+
       # --- Log Directories ---
       - KAFKA_CFG_LOG_DIRS=/bitnami/kafka/data
-      
+
       # --- General Kafka Settings ---
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
       - KAFKA_CFG_NUM_PARTITIONS=1
@@ -48,7 +57,7 @@ services:
       - KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR=1
       - KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
       - KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR=1
-      
+
       # --- Bitnami Specific ---
       - ALLOW_PLAINTEXT_LISTENER=yes
     volumes:
@@ -56,22 +65,32 @@ services:
     networks:
       - project_management_default
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1",
+        ]
       interval: 20s
       timeout: 10s
       retries: 10
       start_period: 120s
 
+  # Core services built with optimized Dockerfiles
   api-gateway:
     build:
       context: .
       dockerfile: api-gateway/Dockerfile
+      # Enable BuildKit for better caching and parallel builds
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: api-gateway
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       user-service:
         condition: service_started
@@ -85,17 +104,29 @@ services:
         condition: service_started
     networks:
       - project_management_default
-
+    # Resource limits for better container management
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   user-service:
     build:
       context: .
       dockerfile: user-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: user-service
     restart: unless-stopped
     ports:
       - "8083:8083"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
         condition: service_healthy
@@ -103,17 +134,28 @@ services:
         condition: service_healthy
     networks:
       - project_management_default
-
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   project-service:
     build:
       context: .
       dockerfile: project-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: project-service
     restart: unless-stopped
     ports:
       - "8082:8082"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
         condition: service_healthy
@@ -121,17 +163,28 @@ services:
         condition: service_healthy
     networks:
       - project_management_default
-
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   task-service:
     build:
       context: .
       dockerfile: task-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: task-service
     restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
         condition: service_healthy
@@ -139,33 +192,55 @@ services:
         condition: service_healthy
     networks:
       - project_management_default
-
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   websocket-service:
     build:
       context: .
       dockerfile: websocket-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: websocket-service
     restart: unless-stopped
     ports:
       - "8085:8085"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       kafka:
         condition: service_healthy
     networks:
       - project_management_default
-
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   notification-service:
     build:
       context: .
       dockerfile: notification-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: notification-service
     restart: unless-stopped
     ports:
       - "8086:8086"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
         condition: service_healthy
@@ -173,17 +248,28 @@ services:
         condition: service_healthy
     networks:
       - project_management_default
-
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
   comment-service:
     build:
       context: .
       dockerfile: comment-service/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: comment-service
     restart: unless-stopped
     ports:
       - "8088:8088"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - JWT_ENABLED=false
+      - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
         condition: service_healthy
@@ -191,6 +277,14 @@ services:
         condition: service_healthy
     networks:
       - project_management_default
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
 
 volumes:
   mongo_data:
@@ -199,3 +293,11 @@ volumes:
 networks:
   project_management_default:
     driver: bridge
+
+# Build configuration for optimized parallel builds
+x-build-defaults: &build-defaults
+  args:
+    BUILDKIT_INLINE_CACHE: 1
+  cache_from:
+    - eclipse-temurin:17-jdk
+    - eclipse-temurin:17-jre-alpine

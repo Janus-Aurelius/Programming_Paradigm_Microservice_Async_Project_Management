@@ -40,10 +40,9 @@ public class User {
     @Size(max = 100)
     @Indexed(unique = true)
     private String email;
-
-    @NotBlank // Password hash should not be blank
-    @Field("passwordHash") // Map to MongoDB field name
-    private String hashedPassword; // Java field name
+    @NotBlank // Password should not be blank
+    @Field("password") // Map to MongoDB field name
+    private String password; // Java field name - storing plaintext password
 
     @Builder.Default
     private UserRole role = UserRole.ROLE_USER; // Single role per user - simplified architecture        @Builder.Default

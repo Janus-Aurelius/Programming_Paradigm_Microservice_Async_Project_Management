@@ -1,23 +1,27 @@
 package com.pm.userservice.config;
 
-import com.pm.userservice.utils.JwtUtil;
-import io.jsonwebtoken.Claims;
+import java.util.Collections;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.security.web.server.context.ServerSecurityContextRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+
+import com.pm.userservice.utils.JwtUtil;
+
+import io.jsonwebtoken.Claims;
 import reactor.core.publisher.Mono;
 
-import java.util.Collections;
-
 @Component
+@ConditionalOnProperty(name = "jwt.enabled", havingValue = "true", matchIfMissing = false)
 public class JwtSecurityContextRepository implements ServerSecurityContextRepository {
+
     private final JwtUtil jwtUtil;
 
     @Autowired
@@ -44,7 +48,7 @@ public class JwtSecurityContextRepository implements ServerSecurityContextReposi
                 String role = (String) claims.get("role");
                 if (!jwtUtil.isTokenExpired(token)) {
                     UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.emptyList()
+                            userId, null, Collections.emptyList()
                     );
                     return Mono.just(new SecurityContextImpl(auth));
                 }

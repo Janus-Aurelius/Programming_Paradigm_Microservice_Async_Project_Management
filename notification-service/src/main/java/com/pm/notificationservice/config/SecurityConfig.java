@@ -1,6 +1,7 @@
 package com.pm.notificationservice.config;
 
 import com.pm.notificationservice.security.NotificationPermissionEvaluator;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
@@ -17,21 +18,27 @@ import com.pm.commonsecurity.security.UserIdHeaderWebFilter;
 @EnableReactiveMethodSecurity
 @Configuration
 public class SecurityConfig {
-    
+
     private final NotificationPermissionEvaluator notificationPermissionEvaluator;
-    
+
+    @Value("${security.devMode:true}")
+    private boolean devMode;
+
     public SecurityConfig(NotificationPermissionEvaluator notificationPermissionEvaluator) {
         this.notificationPermissionEvaluator = notificationPermissionEvaluator;
     }
-    
+
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        http
-            .csrf(csrf -> csrf.disable())
-            .authorizeExchange(exchanges -> exchanges
-                .pathMatchers("/actuator/**").permitAll()
-                .anyExchange().authenticated()
+        http.csrf(csrf -> csrf.disable());
+        if (devMode) {
+            http.authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
+        } else {
+            http.authorizeExchange(exchanges -> exchanges
+                    .pathMatchers("/actuator/**").permitAll()
+                    .anyExchange().authenticated()
             );
+        }
         return http.build();
     }
 
@@ -39,7 +46,7 @@ public class SecurityConfig {
     public WebFilter userIdHeaderWebFilter() {
         return (WebFilter) new UserIdHeaderWebFilter();
     }
-    
+
     @Bean
     public MethodSecurityExpressionHandler methodSecurityExpressionHandler() {
         DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();

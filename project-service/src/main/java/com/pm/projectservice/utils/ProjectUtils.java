@@ -5,20 +5,37 @@ import com.pm.projectservice.model.Project;
 
 public class ProjectUtils {
 
+    private static String sanitizeObjectIdString(String id) {
+        if (id == null) {
+            return null;
+        }
+        if (id.startsWith("ObjectId(\"") && id.endsWith("\")")) {
+            return id.substring(10, id.length() - 2);
+        }
+        return id;
+    }
+
+    private static java.util.List<String> sanitizeObjectIdList(java.util.List<String> ids) {
+        if (ids == null) {
+            return null;
+        }
+        return ids.stream().map(ProjectUtils::sanitizeObjectIdString).collect(java.util.stream.Collectors.toList());
+    }
+
     public static ProjectDto entityToDto(Project project) {
         ProjectDto.ProjectDtoBuilder builder = ProjectDto.builder()
-                .id(project.getId())
+                .id(sanitizeObjectIdString(project.getId()))
                 .name(project.getName())
                 .description(project.getDescription())
                 .status(project.getStatus())
-                .priority(project.getPriority()) // Map priority field
-                .ownerId(project.getOwnerId())
-                .managerIds(project.getManagerIds())
-                .memberIds(project.getMemberIds())
-                .assignedTo(project.getAssignedTo()) // Map assignedTo field
-                .taskIds(project.getTaskIds()) // Map taskIds field
-                .createdBy(project.getCreatedBy())
-                .lastModifiedBy(project.getLastModifiedBy())
+                .priority(project.getPriority())
+                .ownerId(sanitizeObjectIdString(project.getOwnerId()))
+                .managerIds(sanitizeObjectIdList(project.getManagerIds()))
+                .memberIds(sanitizeObjectIdList(project.getMemberIds()))
+                .assignedTo(sanitizeObjectIdString(project.getAssignedTo()))
+                .taskIds(sanitizeObjectIdList(project.getTaskIds()))
+                .createdBy(sanitizeObjectIdString(project.getCreatedBy()))
+                .lastModifiedBy(sanitizeObjectIdString(project.getLastModifiedBy()))
                 .version(project.getVersion());
         // Convert Instant dates to String for DTO
         builder.startDate(project.getStartDate() != null ? project.getStartDate().toString() : null);

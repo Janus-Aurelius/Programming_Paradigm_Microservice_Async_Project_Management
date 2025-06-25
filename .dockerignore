@@ -1,0 +1,51 @@
+# Reduce Docker build context by excluding unnecessary files
+
+# Target directories (built artifacts)
+*/target/
+target/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation and markdown files (unless needed)
+*.md
+HELP.md
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Node modules (if any)
+node_modules/
+
+# Frontend build artifacts (if not needed for backend services)
+frontend-angular/dist/
+frontend-angular/node_modules/
+frontend-angular/src/
+frontend-angular/public/
+
+# Database files
+database-schema/
+
+# Test files and reports
+**/src/test/
+*/src/test/
+**/surefire-reports/
+*/surefire-reports/

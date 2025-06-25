@@ -1,5 +1,6 @@
 package com.pm.apigateway.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
@@ -25,17 +26,21 @@ import java.util.Collections;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
+    @Value("${security.devMode:true}")
+    private boolean devMode;
+
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .authorizeExchange(exchanges -> exchanges
-                        .anyExchange().permitAll()
-                )
-                .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .build();
+        http.cors(cors -> cors.configurationSource(corsConfigurationSource()));
+        if (devMode) {
+            http.authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
+        } else {
+            http.authorizeExchange(exchanges -> exchanges.anyExchange().authenticated());
+        }
+        http.csrf(ServerHttpSecurity.CsrfSpec::disable);
+        return http.build();
     }
-    
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
@@ -45,15 +50,15 @@ public class SecurityConfig {
         configuration.setExposedHeaders(Collections.singletonList("*"));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
-        
+
         // Allow all request headers including Authorization
         configuration.addAllowedHeader("*");
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-    
+
     @Bean
     public WebFilter corsFilter() {
         return (ServerWebExchange ctx, WebFilterChain chain) -> {

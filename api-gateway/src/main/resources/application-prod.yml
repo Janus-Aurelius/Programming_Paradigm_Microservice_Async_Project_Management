@@ -1,0 +1,77 @@
+# Entry point port
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: api-gateway
+  main:
+    allow-bean-definition-overriding: true
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+
+      routes:
+        - id: user_service_route
+          uri: http://user-service:8083
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - StripPrefix=2
+
+        - id: project_service_route
+          uri: http://project-service:8082
+          predicates:
+            - Path=/api/projects/**
+          filters:
+            - StripPrefix=1
+
+        - id: task_service_route
+          uri: http://task-service:8081
+          predicates:
+            - Path=/api/tasks/**
+
+        - id: comment_service_route
+          uri: http://comment-service:8088
+          predicates:
+            - Path=/api/comments/**
+          filters:
+            - StripPrefix=1
+
+        - id: notification_service_route
+          uri: http://notification-service:8086
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            - StripPrefix=1
+
+        - id: websocket_service_route
+          uri: ws://websocket-service:8085/ws
+          predicates:
+            - Path=/ws/updates/**
+          filters:
+            - StripPrefix=1
+
+# Production mode - JWT enabled
+jwt:
+  enabled: true
+  secret: ${JWT_SECRET:my-very-secret-key-for-jwt-signing}
+
+logging:
+  level:
+    root: INFO
+    com.pm.apigateway: INFO
+    reactor.kafka.sender: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+
+# Production security configuration
+security:
+  require-ssl: true
