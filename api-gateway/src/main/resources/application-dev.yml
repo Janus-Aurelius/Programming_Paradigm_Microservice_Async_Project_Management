@@ -11,8 +11,9 @@ spring:
     allow-bean-definition-overriding: true
   cloud:
     gateway:
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      # Remove problematic default filters for WebSocket compatibility
+      # default-filters:
+      #   - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
 
       routes:
         - id: user_service_route

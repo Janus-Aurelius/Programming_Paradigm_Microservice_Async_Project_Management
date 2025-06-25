@@ -11,8 +11,9 @@ spring:
     allow-bean-definition-overriding: true
   cloud:
     gateway:
-      default-filters:
-        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
+      # Remove problematic default filters for WebSocket compatibility
+      # default-filters:
+      #   - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_UNIQUE
 
       routes:
         - id: user_service_route
@@ -51,7 +52,19 @@ spring:
         - id: websocket_service_route
           uri: ws://websocket-service:8085
           predicates:
-            - Path=/ws/updates
+            - Path=/ws/updates/**
+          metadata:
+            connect-timeout: 5000
+            response-timeout: 5000
+
+        - id: auth_service_route
+          uri: http://user-service:8083
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            # We need to strip 1 prefix part: "/api"
+            # Request /api/auth/login -> becomes /auth/login for the user-service
+            - StripPrefix=1
 
 # JWT disabled by default for easier development
 jwt:

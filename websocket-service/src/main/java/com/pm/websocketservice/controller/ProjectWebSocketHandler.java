@@ -3,9 +3,10 @@ package com.pm.websocketservice.controller; // Or handler package
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.pm.websocketservice.service.WebSocketSessionManager; // Import the manager
+import com.pm.websocketservice.service.SubscriptionRegistry; // Updated import
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.socket.WebSocketHandler;
 import org.springframework.web.reactive.socket.WebSocketMessage;
@@ -19,11 +20,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ProjectWebSocketHandler implements WebSocketHandler { // Renamed class
 
-    private final WebSocketSessionManager sessionManager; // Inject the manager
+    private final SubscriptionRegistry registry; // Updated field name
     private final ObjectMapper objectMapper; // Inject ObjectMapper for parsing client messages
 
     @Override
-    public Mono<Void> handle(WebSocketSession session) {
+    @NonNull
+    public Mono<Void> handle(@NonNull WebSocketSession session) {
         log.info("WebSocket session established: {}", session.getId());
 
         // --- Inbound Message Handling (Client -> Server: Subscriptions & User Auth) ---
@@ -36,41 +38,50 @@ public class ProjectWebSocketHandler implements WebSocketHandler { // Renamed cl
 
         // --- Session Lifecycle Management ---
         return input.doFinally(signal -> {
-            log.info("WebSocket session [{}] closing with signal: {}. Removing from subscriptions and user associations.", session.getId(), signal);
-            sessionManager.removeSessionFromAll(session);
-            sessionManager.removeSessionFromAllUsers(session);
+            log.info("WebSocket session [{}] closing with signal: {}. Removing from all subscriptions.", session.getId(), signal);
+            registry.removeSessionFromAll(session);
         });
     }
 
     /**
-     * Processes incoming text messages from the WebSocket client.
-     * Expects JSON like: {"type": "subscribe", "projectId": "..."}, {"type": "unsubscribe", "projectId": "..."} or {"type": "user-auth", "userId": "..."}
+     * Processes incoming text messages from the WebSocket client. Expects JSON
+     * like: {"type": "subscribe", "topic": "project:123"}, {"type":
+     * "unsubscribe", "topic": "project:123"} or {"type": "user-auth", "userId":
+     * "..."}
      */
     private Mono<Void> processClientMessage(WebSocketSession session, String jsonPayload) {
         try {
             // Use TypeReference for generic Map deserialization
-            Map<String, String> command = objectMapper.readValue(jsonPayload, new TypeReference<Map<String, String>>() {});
+            Map<String, String> command = objectMapper.readValue(jsonPayload, new TypeReference<Map<String, String>>() {
+            });
             String type = command.get("type");
-            String projectId = command.get("projectId");
+            String topic = command.get("topic");
             String userId = command.get("userId");
+            String projectId = command.get("projectId"); // Legacy support
 
             if ("user-auth".equalsIgnoreCase(type) && userId != null && !userId.isBlank()) {
                 log.info("Session [{}] authenticating as user [{}]", session.getId(), userId);
-                sessionManager.addUserSession(userId, session);
+                registry.addSubscription("user:" + userId, session);
                 return Mono.empty(); // Consume the message
             }
 
-            if (projectId == null || projectId.isBlank()) {
-                log.warn("Received command without projectId from session [{}]: {}", session.getId(), jsonPayload);
+            // Handle legacy projectId format by converting to topic format
+            if (topic == null && projectId != null && !projectId.isBlank()) {
+                topic = "project:" + projectId;
+                log.debug("Converting legacy projectId [{}] to topic [{}] for session [{}]", projectId, topic, session.getId());
+            }
+
+            if (topic == null || topic.isBlank()) {
+                log.warn("Received command without topic from session [{}]: {}", session.getId(), jsonPayload);
                 return Mono.empty(); // Ignore invalid command
             }
 
             if ("subscribe".equalsIgnoreCase(type)) {
-                log.info("Session [{}] subscribing to project [{}]", session.getId(), projectId);
-                sessionManager.addSubscription(projectId, session);
+                log.info("Session [{}] subscribing to topic [{}]", session.getId(), topic);
+                registry.addSubscription(topic, session);
             } else if ("unsubscribe".equalsIgnoreCase(type)) {
-                log.info("Session [{}] unsubscribing from project [{}]", session.getId(), projectId);
-                sessionManager.removeSubscription(projectId, session);
+                log.info("Session [{}] unsubscribing from topic [{}]", session.getId(), topic);
+                registry.removeSubscription(topic, session);
             } else {
                 log.warn("Received unknown command type '{}' from session [{}]: {}", type, session.getId(), jsonPayload);
             }
