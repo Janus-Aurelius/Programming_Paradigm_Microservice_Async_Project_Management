@@ -1,6 +1,5 @@
 package com.pm.commentservice.security;
 
-import java.io.Serializable;
 import java.util.List;
 
 import org.springframework.security.core.Authentication;
@@ -13,84 +12,102 @@ import com.pm.commonsecurity.security.PermissionEvaluator;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Mono;
 
 /**
- * Comment-specific permission evaluator that extends the base RBAC system
- * to handle comment-specific access scenarios (creator ownership).
- * Implements Spring's PermissionEvaluator interface to be used by MethodSecurityExpressionHandler.
+ * Reactive Comment-specific permission evaluator for use in reactive chains.
+ * This maintains the same permission logic but returns Mono<Boolean> instead of
+ * blocking boolean values.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class CommentPermissionEvaluator implements org.springframework.security.access.PermissionEvaluator {
+public class CommentPermissionEvaluator {
 
     private final CommentRepository commentRepository;
-    private final PermissionEvaluator basePermissionEvaluator; // This is com.pm.commonsecurity.security.PermissionEvaluator
+    private final PermissionEvaluator basePermissionEvaluator;
 
-    @Override
-    public boolean hasPermission(Authentication authentication, Object targetDomainObject, Object permission) {
-        if (authentication == null || !authentication.isAuthenticated() || permission == null) {
-            return false;
+    /**
+     * Check permission for a specific comment reactively
+     *
+     * @param authentication The user's authentication
+     * @param commentId The comment ID
+     * @param action The action/permission to check
+     * @return Mono<Boolean> indicating if user has permission
+     */
+    public Mono<Boolean> hasPermission(Authentication authentication, String commentId, String action) {
+        if (authentication == null || !authentication.isAuthenticated() || action == null) {
+            return Mono.just(false);
         }
 
         try {
-            Action action = Action.valueOf(permission.toString().toUpperCase());
+            Action actionEnum = Action.valueOf(action.toUpperCase());
             String currentUserId = getCurrentUserId(authentication);
-            
-            // Check if user is trying to access a specific comment
-            if (targetDomainObject instanceof Comment comment) {
-                return hasCommentAccess(authentication, comment, action, currentUserId);
-            }
-            
-            // Check if targetDomainObject is a comment ID string
-            if (targetDomainObject instanceof String commentId) {
-                // For operations that need comment context but only have the ID
-                Comment comment = commentRepository.findById(commentId).block();
-                if (comment != null) {
-                    return hasCommentAccess(authentication, comment, action, currentUserId);
-                }
-            }
-            
-            // Fall back to role-based permission evaluation for general actions
-            List<String> userRoles = getUserRoles(authentication);
-            return basePermissionEvaluator.hasPermission(userRoles, action);
-            
+
+            // Get comment reactively and check permissions
+            return commentRepository.findById(commentId)
+                    .map(comment -> hasCommentAccess(authentication, comment, actionEnum, currentUserId))
+                    .switchIfEmpty(Mono.just(false)) // Comment not found = no permission
+                    .onErrorResume(e -> {
+                        log.error("Error checking permissions for comment {} and action {}: {}", commentId, action, e.getMessage());
+                        return Mono.just(false);
+                    });
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid permission string: {}", permission);
-            return false;
-        } catch (Exception e) {
-            log.error("Error evaluating permission", e);
-            return false;
+            log.warn("Invalid action string: {}", action);
+            return Mono.just(false);
         }
     }
 
-    @Override
-    public boolean hasPermission(Authentication authentication, Serializable targetId, String targetType, Object permission) {
-        if (authentication == null || !authentication.isAuthenticated() || permission == null) {
-            return false;
+    /**
+     * Check permission when we already have the comment entity
+     *
+     * @param authentication The user's authentication
+     * @param comment The comment entity
+     * @param action The action/permission to check
+     * @return Mono<Boolean> indicating if user has permission
+     */
+    public Mono<Boolean> hasPermission(Authentication authentication, Comment comment, String action) {
+        if (authentication == null || !authentication.isAuthenticated() || action == null || comment == null) {
+            return Mono.just(false);
         }
 
         try {
-            Action action = Action.valueOf(permission.toString().toUpperCase());
+            Action actionEnum = Action.valueOf(action.toUpperCase());
             String currentUserId = getCurrentUserId(authentication);
-            
-            if ("COMMENT".equals(targetType) && targetId != null) {
-                Comment comment = commentRepository.findById(targetId.toString()).block();
-                if (comment != null) {
-                    return hasCommentAccess(authentication, comment, action, currentUserId);
-                }
-            }
-            
-            // Fall back to role-based permission evaluation
-            List<String> userRoles = getUserRoles(authentication);
-            return basePermissionEvaluator.hasPermission(userRoles, action);
-            
+            boolean hasAccess = hasCommentAccess(authentication, comment, actionEnum, currentUserId);
+            return Mono.just(hasAccess);
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid permission string: {}", permission);
-            return false;
+            log.warn("Invalid action string: {}", action);
+            return Mono.just(false);
         } catch (Exception e) {
-            log.error("Error evaluating permission", e);
-            return false;
+            log.error("Error checking permissions for comment {} and action {}: {}", comment.getId(), action, e.getMessage());
+            return Mono.just(false);
+        }
+    }
+
+    /**
+     * Check general permissions (not comment-specific)
+     *
+     * @param authentication The user's authentication
+     * @param action The action/permission to check
+     * @return Mono<Boolean> indicating if user has permission
+     */
+    public Mono<Boolean> hasGeneralPermission(Authentication authentication, String action) {
+        if (authentication == null || !authentication.isAuthenticated() || action == null) {
+            return Mono.just(false);
+        }
+
+        try {
+            Action actionEnum = Action.valueOf(action.toUpperCase());
+            List<String> userRoles = getUserRoles(authentication);
+            boolean hasPermission = basePermissionEvaluator.hasPermission(userRoles, actionEnum);
+            return Mono.just(hasPermission);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid action string: {}", action);
+            return Mono.just(false);
+        } catch (Exception e) {
+            log.error("Error checking general permission for action {}: {}", action, e.getMessage());
+            return Mono.just(false);
         }
     }
 
@@ -99,30 +116,47 @@ public class CommentPermissionEvaluator implements org.springframework.security.
      */
     private boolean hasCommentAccess(Authentication authentication, Comment comment, Action action, String currentUserId) {
         List<String> userRoles = getUserRoles(authentication);
-          // Check if the user is the creator of the comment
-        boolean isCreator = currentUserId.equals(comment.getUserId());
-        
-        switch (action) {
-            case CMT_CREATE:
+        // Check if the user is the creator of the comment
+        boolean isCreator = currentUserId != null && currentUserId.equals(comment.getUserId());
+
+        return switch (action) {
+            case CMT_READ -> {
+                // Anyone with basic role can read comments if they have access to the parent resource
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+            case CMT_CREATE -> {
                 // Anyone with basic access can create comments (handled at parent project/task level)
-                return true;
-                
-            case CMT_UPDATE_OWN:
-                // Only creators can update their own comments, or admins
-                return isCreator || userRoles.contains("ROLE_ADMIN");
-                
-            case CMT_DELETE_OWN:
-                // Only creators can delete their own comments, or admins
-                return isCreator || userRoles.contains("ROLE_ADMIN");
-                
-            case CMT_DELETE_ANY:
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+            case CMT_UPDATE, CMT_EDIT, CMT_UPDATE_OWN -> {
+                // Only creators can update their own comments, or admins/PMs
+                if (isCreator) {
+                    yield true;
+                }
+                // Fall back to role-based evaluation
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+            case CMT_DELETE, CMT_DELETE_OWN -> {
+                // Only creators can delete their own comments, or admins/PMs
+                if (isCreator) {
+                    yield true;
+                }
+                // Fall back to role-based evaluation
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+            case CMT_DELETE_ANY -> {
                 // Only admins/moderators can delete any comment
-                return userRoles.contains("ROLE_ADMIN") || userRoles.contains("ROLE_PROJECT_MANAGER");
-                
-            default:
-                // For other actions, fall back to role-based permission evaluation
-                return basePermissionEvaluator.hasPermission(userRoles, action);
-        }
+                yield userRoles.contains("ROLE_ADMIN") || userRoles.contains("ROLE_PROJECT_MANAGER");
+            }
+            case CMT_REPLY -> {
+                // Anyone who can create comments can reply
+                yield basePermissionEvaluator.hasPermission(userRoles, Action.CMT_CREATE);
+            }
+            // For all other actions, use role-based evaluation
+            default -> {
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+        };
     }
 
     /**
@@ -135,7 +169,6 @@ public class CommentPermissionEvaluator implements org.springframework.security.
     /**
      * Extracts user roles from authentication
      */
-    @SuppressWarnings("unchecked")
     private List<String> getUserRoles(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .map(authority -> authority.getAuthority())

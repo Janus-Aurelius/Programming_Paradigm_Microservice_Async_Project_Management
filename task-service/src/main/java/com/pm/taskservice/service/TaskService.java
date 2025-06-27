@@ -80,7 +80,7 @@ public class TaskService {
         return repository.findByProjectId(projectId)
                 .map(TaskUtils::entityToDto)
                 .doOnError(e -> log.error("Error fetching tasks by project ID: {}", projectId, e))
-                .switchIfEmpty(Mono.error(new ResourceNotFoundException("No tasks found for project ID: " + projectId)))
+                .switchIfEmpty(Flux.empty())
                 .onErrorResume(e -> Flux.error(new RuntimeException("Failed to fetch tasks by projectId", e)))
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in getTasksByProjectId, skipping element", throwable));
     }
@@ -89,7 +89,7 @@ public class TaskService {
         return repository.findByAssigneeId(assigneeId)
                 .flatMap(task -> enrichTaskWithUserInfo(TaskUtils.entityToDto(task)))
                 .doOnError(e -> log.error("Error fetching tasks by assigned user: {}", assigneeId, e))
-                .switchIfEmpty(Flux.error(new ResourceNotFoundException("No tasks found for user: " + assigneeId)))
+                .switchIfEmpty(Flux.empty())
                 .onErrorResume(e -> Flux.error(new RuntimeException("Failed to fetch tasks by assigneeId", e)))
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in getTasksByAssigneeId, skipping element", throwable));
     }
@@ -452,5 +452,59 @@ public class TaskService {
                     log.warn("Could not fetch user info for task {}: {}", taskDto.getId(), e.getMessage());
                     return Mono.just(taskDto);
                 });
+    }
+
+    // ==============================
+    // Permission checking operations
+    // ==============================
+    public Mono<Boolean> hasTaskAccess(org.springframework.security.core.Authentication authentication, TaskDto task, String action) {
+        return Mono.fromCallable(() -> {
+            if (authentication == null || !authentication.isAuthenticated() || action == null) {
+                return false;
+            }
+
+            String currentUserId = getCurrentUserId(authentication);
+
+            try {
+                boolean isAssignee = currentUserId != null && currentUserId.equals(task.getAssigneeId());
+                boolean isCreator = currentUserId != null && currentUserId.equals(task.getCreatedBy());
+
+                // Basic permission checks based on action
+                switch (action.toUpperCase()) {
+                    case "TASK_READ":
+                        return isAssignee || isCreator || hasAdminRole(authentication) || hasManagerRole(authentication);
+                    case "TASK_UPDATE":
+                    case "TASK_STATUS_CHANGE":
+                    case "TASK_PRIORITY_CHANGE":
+                        return isAssignee || isCreator || hasManagerRole(authentication) || hasAdminRole(authentication);
+                    case "TASK_DELETE":
+                        return isCreator || hasAdminRole(authentication);
+                    case "TASK_ASSIGN":
+                        return hasManagerRole(authentication) || hasAdminRole(authentication);
+                    default:
+                        return false;
+                }
+            } catch (Exception e) {
+                log.error("Error checking task access for user {} on task {}", currentUserId, task.getId(), e);
+                return false;
+            }
+        });
+    }
+
+    private String getCurrentUserId(org.springframework.security.core.Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() != null) {
+            return authentication.getName(); // or extract from principal based on your auth setup
+        }
+        return null;
+    }
+
+    private boolean hasAdminRole(org.springframework.security.core.Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    private boolean hasManagerRole(org.springframework.security.core.Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_PROJECT_MANAGER"));
     }
 }

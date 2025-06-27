@@ -1,41 +1,40 @@
-package com.pm.taskservice.security;
-
-import java.util.List;
-
-import org.springframework.security.core.Authentication;
-import org.springframework.stereotype.Component;
+package com.pm.projectservice.security;
 
 import com.pm.commonsecurity.security.Action;
 import com.pm.commonsecurity.security.PermissionEvaluator;
-import com.pm.taskservice.model.Task;
-import com.pm.taskservice.repository.TaskRepository;
-
+import com.pm.projectservice.model.Project;
+import com.pm.projectservice.repository.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 /**
- * Reactive Task-specific permission evaluator for use in reactive chains. This
- * maintains the same permission logic but returns Mono<Boolean> instead of
- * blocking boolean values.
+ * Reactive version of ProjectPermissionEvaluator for use in reactive chains.
+ * This maintains the same permission logic as ProjectPermissionEvaluator but
+ * returns Mono<Boolean>
+ * instead of blocking boolean values.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class TaskPermissionEvaluator {
+public class ReactiveProjectPermissionEvaluator {
 
-    private final TaskRepository taskRepository;
+    private final ProjectRepository projectRepository;
     private final PermissionEvaluator basePermissionEvaluator;
 
     /**
-     * Check permission for a specific task reactively
+     * Check permission for a specific project reactively
      *
      * @param authentication The user's authentication
-     * @param taskId The task ID
+     * @param projectId The project ID
      * @param action The action/permission to check
      * @return Mono<Boolean> indicating if user has permission
      */
-    public Mono<Boolean> hasPermission(Authentication authentication, String taskId, String action) {
+    public Mono<Boolean> hasPermission(Authentication authentication, String projectId, String action) {
         if (authentication == null || !authentication.isAuthenticated() || action == null) {
             return Mono.just(false);
         }
@@ -44,12 +43,12 @@ public class TaskPermissionEvaluator {
             Action actionEnum = Action.valueOf(action.toUpperCase());
             String currentUserId = getCurrentUserId(authentication);
 
-            // Get task reactively and check permissions
-            return taskRepository.findById(taskId)
-                    .map(task -> hasTaskAccess(authentication, task, actionEnum, currentUserId))
-                    .switchIfEmpty(Mono.just(false)) // Task not found = no permission
+            // Get project reactively and check permissions
+            return projectRepository.findById(projectId)
+                    .map(project -> hasProjectAccess(authentication, project, actionEnum, currentUserId))
+                    .switchIfEmpty(Mono.just(false)) // Project not found = no permission
                     .onErrorResume(e -> {
-                        log.error("Error checking permissions for task {} and action {}: {}", taskId, action, e.getMessage());
+                        log.error("Error checking permissions for project {} and action {}: {}", projectId, action, e.getMessage());
                         return Mono.just(false);
                     });
         } catch (IllegalArgumentException e) {
@@ -59,34 +58,34 @@ public class TaskPermissionEvaluator {
     }
 
     /**
-     * Check permission when we already have the task entity
+     * Check permission when we already have the project entity
      *
      * @param authentication The user's authentication
-     * @param task The task entity
+     * @param project The project entity
      * @param action The action/permission to check
      * @return Mono<Boolean> indicating if user has permission
      */
-    public Mono<Boolean> hasPermission(Authentication authentication, Task task, String action) {
-        if (authentication == null || !authentication.isAuthenticated() || action == null || task == null) {
+    public Mono<Boolean> hasPermission(Authentication authentication, Project project, String action) {
+        if (authentication == null || !authentication.isAuthenticated() || action == null || project == null) {
             return Mono.just(false);
         }
 
         try {
             Action actionEnum = Action.valueOf(action.toUpperCase());
             String currentUserId = getCurrentUserId(authentication);
-            boolean hasAccess = hasTaskAccess(authentication, task, actionEnum, currentUserId);
+            boolean hasAccess = hasProjectAccess(authentication, project, actionEnum, currentUserId);
             return Mono.just(hasAccess);
         } catch (IllegalArgumentException e) {
             log.warn("Invalid action string: {}", action);
             return Mono.just(false);
         } catch (Exception e) {
-            log.error("Error checking permissions for task {} and action {}: {}", task.getId(), action, e.getMessage());
+            log.error("Error checking permissions for project {} and action {}: {}", project.getId(), action, e.getMessage());
             return Mono.just(false);
         }
     }
 
     /**
-     * Check general permissions (not task-specific)
+     * Check general permissions (not project-specific)
      *
      * @param authentication The user's authentication
      * @param action The action/permission to check
@@ -111,38 +110,27 @@ public class TaskPermissionEvaluator {
         }
     }
 
-    private boolean hasTaskAccess(Authentication authentication, Task task, Action action, String currentUserId) {
-        // Check if user is task creator or assignee
-        boolean isCreator = currentUserId != null && currentUserId.equals(task.getCreatedBy());
-        boolean isAssignee = currentUserId != null && currentUserId.equals(task.getAssigneeId());
+    private boolean hasProjectAccess(Authentication authentication, Project project, Action action, String currentUserId) {
+        // Check if user is project creator
+        boolean isCreator = currentUserId != null && currentUserId.equals(project.getCreatedBy());
 
-        // Task-specific permissions based on ownership/assignment
+        // Check if user is project member
+        boolean isMember = currentUserId != null && project.getMemberIds() != null
+                && project.getMemberIds().contains(currentUserId);
+
+        // Project-specific permissions based on membership/ownership
         return switch (action) {
-            case TASK_CREATE -> {
-                // Anyone with TASK_CREATE permission can create tasks - delegate to role-based evaluation
-                List<String> userRoles = getUserRoles(authentication);
-                yield basePermissionEvaluator.hasPermission(userRoles, action);
-            }
-            case TASK_READ -> {
-                // Creators, assignees and users with role-based permissions can read the task
-                if (isCreator || isAssignee) {
+            case PRJ_READ -> {
+                // Members and creators can read the project, plus role-based access
+                if (isCreator || isMember) {
                     yield true;
                 }
                 // Fall back to role-based evaluation
                 List<String> userRoles = getUserRoles(authentication);
                 yield basePermissionEvaluator.hasPermission(userRoles, action);
             }
-            case TASK_UPDATE, TASK_STATUS_CHANGE, TASK_PRIORITY_CHANGE -> {
-                // Creators, assignees and project managers can update tasks
-                if (isCreator || isAssignee) {
-                    yield true;
-                }
-                // Fall back to role-based evaluation
-                List<String> userRoles = getUserRoles(authentication);
-                yield basePermissionEvaluator.hasPermission(userRoles, action);
-            }
-            case TASK_DELETE -> {
-                // Only creators and admins can delete tasks
+            case PRJ_UPDATE, PRJ_STATUS_CHANGE -> {
+                // Only creators and project managers can update projects
                 if (isCreator) {
                     yield true;
                 }
@@ -150,8 +138,17 @@ public class TaskPermissionEvaluator {
                 List<String> userRoles = getUserRoles(authentication);
                 yield basePermissionEvaluator.hasPermission(userRoles, action);
             }
-            case TASK_ASSIGN -> {
-                // Creators and project managers can assign tasks
+            case PRJ_DELETE, PRJ_ARCHIVE -> {
+                // Only creators and admins can delete/archive projects
+                if (isCreator) {
+                    yield true;
+                }
+                // Fall back to role-based evaluation
+                List<String> userRoles = getUserRoles(authentication);
+                yield basePermissionEvaluator.hasPermission(userRoles, action);
+            }
+            case PRJ_MEMBER_ADD, PRJ_MEMBER_REMOVE -> {
+                // Only creators and project managers can manage members
                 if (isCreator) {
                     yield true;
                 }

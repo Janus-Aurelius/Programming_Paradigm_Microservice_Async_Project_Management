@@ -8,17 +8,6 @@ import org.springframework.stereotype.Component;
 
 import com.pm.commoncontracts.envelope.EventEnvelope;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
-import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
-import com.pm.commoncontracts.events.project.ProjectDeletedEventPayload;
-import com.pm.commoncontracts.events.project.ProjectStatusChangedEventPayload;
-import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
-import com.pm.commoncontracts.events.project.ProjectUpdatedEventPayload;
-import com.pm.commoncontracts.events.task.TaskAssignedEventPayload;
-import com.pm.commoncontracts.events.task.TaskCreatedEventPayload;
-import com.pm.commoncontracts.events.task.TaskDeletedEventPayload;
-import com.pm.commoncontracts.events.task.TaskPriorityChangedEventPayload;
-import com.pm.commoncontracts.events.task.TaskStatusChangedEventPayload;
-import com.pm.commoncontracts.events.task.TaskUpdatedEventPayload;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -30,6 +19,21 @@ import reactor.core.publisher.Mono;
 import reactor.kafka.receiver.KafkaReceiver;
 import reactor.kafka.receiver.ReceiverRecord;
 
+/**
+ * WebSocket Event Dispatcher for real-time notifications.
+ *
+ * This service is responsible ONLY for broadcasting
+ * NotificationToSendEventPayload events to connected WebSocket clients. All
+ * domain events (project, task, comment, etc.) should be processed by the
+ * notification service first, which creates unified notifications before they
+ * reach this dispatcher.
+ *
+ * Architecture Flow: 1. Domain services emit domain events
+ * (CommentDeletedEventPayload, TaskCreatedEventPayload, etc.) 2. Notification
+ * service consumes domain events and creates NotificationToSendEventPayload 3.
+ * WebSocketEventDispatcher broadcasts NotificationToSendEventPayload to
+ * relevant users
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -114,57 +118,12 @@ public class WebSocketEventDispatcher {
             return List.of();
         }
 
-        // Project events
-        if (payload instanceof ProjectCreatedEventPayload p) {
-            return p.projectDto() != null ? List.of("project:" + p.projectDto().getId()) : List.of();
-        } else if (payload instanceof ProjectDeletedEventPayload p) {
-            return List.of("project:" + p.projectDto().getId());
-        } else if (payload instanceof ProjectUpdatedEventPayload p) {
-            return p.projectDto() != null ? List.of("project:" + p.projectDto().getId()) : List.of();
-        } else if (payload instanceof ProjectStatusChangedEventPayload p) {
-            return p.projectDto() != null ? List.of("project:" + p.projectDto().getId()) : List.of();
-        } else if (payload instanceof ProjectTaskCreatedEventPayload p) {
-            return List.of("project:" + p.projectId()); // This has projectId directly
-        } // Task events - can target both project and task topics
-        else if (payload instanceof TaskCreatedEventPayload t) {
-            if (t.taskDto() != null) {
-                return List.of("project:" + t.taskDto().getProjectId(),
-                        "task:" + t.taskDto().getId());
-            }
-            return List.of();
-        } else if (payload instanceof TaskStatusChangedEventPayload t) {
-            if (t.taskDto() != null) {
-                return List.of("project:" + t.taskDto().getProjectId(),
-                        "task:" + t.taskDto().getId());
-            }
-            return List.of();
-        } else if (payload instanceof TaskDeletedEventPayload t) {
-            return List.of("project:" + t.taskDto().getProjectId(),
-                    "task:" + t.taskDto().getId());
-        } else if (payload instanceof TaskUpdatedEventPayload t) {
-            if (t.taskDto() != null) {
-                return List.of("project:" + t.taskDto().getProjectId(),
-                        "task:" + t.taskDto().getId());
-            }
-            return List.of();
-        } else if (payload instanceof TaskPriorityChangedEventPayload t) {
-            if (t.dto() != null) {
-                return List.of("project:" + t.dto().getProjectId(),
-                        "task:" + t.dto().getId());
-            }
-            return List.of();
-        } else if (payload instanceof TaskAssignedEventPayload t) {
-            if (t.taskDto() != null) {
-                return List.of("project:" + t.taskDto().getProjectId(),
-                        "task:" + t.taskDto().getId());
-            }
-            return List.of();
-        } // Notification events
-        else if (payload instanceof NotificationToSendEventPayload n) {
+        // Only handle notification events - all other events should be processed by notification service first
+        if (payload instanceof NotificationToSendEventPayload n) {
             return List.of("user:" + n.notification().getRecipientUserId());
         }
 
-        log.warn("Unknown payload type {}", payload.getClass().getName());
+        log.warn("WebSocketEventDispatcher received unsupported payload type: {}. All domain events should be processed by notification service first.", payload.getClass().getName());
         return List.of();
     }
 

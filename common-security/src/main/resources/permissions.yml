@@ -5,15 +5,17 @@ rbac:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ
       - NOTI_MARK_READ
-      
+
     ROLE_DEVELOPER:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ
@@ -24,11 +26,12 @@ rbac:
       - TASK_UPDATE
       - TASK_STATUS_CHANGE
       - TASK_PRIORITY_CHANGE
-      
+
     ROLE_PROJECT_MANAGER:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ
@@ -43,6 +46,7 @@ rbac:
       - PRJ_UPDATE
       - PRJ_DELETE
       - PRJ_ARCHIVE
+      - PRJ_STATUS_CHANGE
       - PRJ_MEMBER_ADD
       - PRJ_MEMBER_REMOVE
       - TASK_ASSIGN

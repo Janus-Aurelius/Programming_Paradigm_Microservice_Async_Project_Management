@@ -1,8 +1,6 @@
 package com.pm.userservice.controller;
 
 import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +17,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.pm.commoncontracts.domain.UserRole;
@@ -173,136 +170,5 @@ public class UserController {
                     return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<JwtResponse>build());
                 })
                 .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<JwtResponse>build());
-    }
-
-    @PostMapping("/auth/test-login")
-    public Mono<ResponseEntity<String>> testLogin(@RequestBody LoginRequest loginRequest) {
-        log.info("Testing login for: {}", loginRequest.getEmail());
-        return userService.getUserByEmailForAuthentication(loginRequest.getEmail())
-                .flatMap(userDto -> {
-                    log.info("Found user: {}, stored password: {}", userDto.getEmail(), userDto.getPassword() != null ? "NOT NULL" : "NULL");
-                    if (userDto.getPassword() == null) {
-                        return Mono.just(ResponseEntity.ok("ERROR: Password is null in DTO"));
-                    }
-
-                    boolean matches = loginRequest.getPassword().equals(userDto.getPassword());
-                    log.info("Password match result: {}", matches);
-
-                    if (matches) {
-                        return Mono.just(ResponseEntity.ok("SUCCESS: Login would succeed"));
-                    } else {
-                        return Mono.just(ResponseEntity.ok("ERROR: Password mismatch"));
-                    }
-                })
-                .onErrorResume(ResourceNotFoundException.class, e -> {
-                    log.warn("User not found: {}", loginRequest.getEmail());
-                    return Mono.just(ResponseEntity.ok("ERROR: User not found"));
-                })
-                .onErrorResume(Exception.class, e -> {
-                    log.error("Error during test login", e);
-                    return Mono.just(ResponseEntity.ok("ERROR: " + e.getMessage()));
-                })
-                .defaultIfEmpty(ResponseEntity.ok("ERROR: No response"));
-    }
-
-    @GetMapping("/test/db-connection")
-    public Mono<ResponseEntity<String>> testDatabaseConnection() {
-        log.info("Testing database connection");
-        return userService.getUsers()
-                .count()
-                .map(count -> ResponseEntity.ok("SUCCESS: Found " + count + " users in database"))
-                .onErrorResume(e -> {
-                    log.error("Database connection error", e);
-                    return Mono.just(ResponseEntity.ok("ERROR: " + e.getMessage()));
-                });
-    }
-
-    @PostMapping("/test/mock-login")
-    public Mono<ResponseEntity<String>> mockLogin(@RequestBody LoginRequest loginRequest) {
-        log.info("Mock login test for: {}", loginRequest.getEmail());
-
-        // Mock user with plaintext password for testing
-        if ("admin@test.com".equals(loginRequest.getEmail()) && "12345".equals(loginRequest.getPassword())) {
-            return Mono.just(ResponseEntity.ok("SUCCESS: Mock login successful with plaintext password"));
-        }
-
-        // Test with real database but plaintext comparison
-        return userService.getUserByEmailForAuthentication(loginRequest.getEmail())
-                .flatMap(userDto -> {
-                    log.info("Found user: {}, checking plaintext password", userDto.getEmail());
-                    if (userDto.getPassword() == null) {
-                        return Mono.just(ResponseEntity.ok("ERROR: Password is null in DTO"));
-                    }
-
-                    // Display the actual password for debugging
-                    String result = String.format("User found: %s, Stored password: %s, Plaintext match: %s",
-                            userDto.getEmail(),
-                            userDto.getPassword(),
-                            userDto.getPassword().equals(loginRequest.getPassword()));
-
-                    return Mono.just(ResponseEntity.ok(result));
-                })
-                .onErrorResume(ResourceNotFoundException.class, e -> {
-                    log.warn("User not found: {}", loginRequest.getEmail());
-                    return Mono.just(ResponseEntity.ok("ERROR: User not found"));
-                })
-                .onErrorResume(Exception.class, e -> {
-                    log.error("Error during mock login", e);
-                    return Mono.just(ResponseEntity.ok("ERROR: " + e.getMessage()));
-                })
-                .defaultIfEmpty(ResponseEntity.ok("ERROR: No response"));
-    }
-
-    @PostMapping("/test/create-test-user")
-    public Mono<ResponseEntity<String>> createTestUser() {
-        log.info("Creating test user with known credentials");
-
-        UserDto testUser = new UserDto();
-        testUser.setFirstName("Test");
-        testUser.setLastName("User");
-        testUser.setEmail("testuser@example.com");
-        testUser.setPassword("testpassword123");
-        testUser.setRole(UserRole.ROLE_DEVELOPER);
-
-        return userService.createUser(testUser)
-                .map(createdUser -> ResponseEntity.ok("SUCCESS: Test user created with email: " + createdUser.getEmail() + " and password: testpassword123"))
-                .onErrorResume(ConflictException.class, e
-                        -> Mono.just(ResponseEntity.ok("INFO: Test user already exists"))
-                )
-                .onErrorResume(Exception.class, e -> {
-                    log.error("Error creating test user", e);
-                    return Mono.just(ResponseEntity.ok("ERROR: " + e.getMessage()));
-                });
-    }
-
-    /**
-     * Development mode test endpoint - verifies JWT is disabled
-     */
-    @GetMapping("/test/dev-mode")
-    public Mono<ResponseEntity<Map<String, Object>>> testDevMode(ServerWebExchange exchange) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", "Development mode endpoint accessed successfully");
-        response.put("jwtEnabled", jwtEnabled);
-        response.put("timestamp", System.currentTimeMillis());
-
-        // Check for development headers
-        Map<String, String> headers = new HashMap<>();
-        String userId = exchange.getRequest().getHeaders().getFirst("X-User-Id");
-        String userEmail = exchange.getRequest().getHeaders().getFirst("X-User-Email");
-        String userRole = exchange.getRequest().getHeaders().getFirst("X-User-Role");
-
-        if (userId != null) {
-            headers.put("X-User-Id", userId);
-        }
-        if (userEmail != null) {
-            headers.put("X-User-Email", userEmail);
-        }
-        if (userRole != null) {
-            headers.put("X-User-Role", userRole);
-        }
-        response.put("devHeaders", headers);
-
-        log.info("Development mode test endpoint accessed - JWT enabled: {}", jwtEnabled);
-        return Mono.just(ResponseEntity.ok(response));
     }
 }

@@ -5,6 +5,7 @@ rbac:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ
@@ -14,6 +15,7 @@ rbac:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ
@@ -29,6 +31,7 @@ rbac:
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
+      - CMT_READ
       - CMT_UPDATE_OWN
       - CMT_DELETE_OWN
       - NOTI_READ

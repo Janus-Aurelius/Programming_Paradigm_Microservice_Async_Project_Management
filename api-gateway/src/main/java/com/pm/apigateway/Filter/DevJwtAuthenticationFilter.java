@@ -33,7 +33,7 @@ public class DevJwtAuthenticationFilter implements GlobalFilter, Ordered {
 
         // Forward mock user info to downstream services for development
         ServerHttpRequest.Builder mutatedRequestBuilder = exchange.getRequest().mutate()
-                .header("X-User-Id", "dev-user-123")
+                .header("X-User-Id", "685cccd043a91a99a02f669b")
                 .header("X-User-Email", "dev@example.com")
                 .header("X-User-Role", "ROLE_ADMIN"); // Give admin role for development convenience
 

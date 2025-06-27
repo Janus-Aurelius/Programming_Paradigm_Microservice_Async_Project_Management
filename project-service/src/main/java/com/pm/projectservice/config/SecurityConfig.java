@@ -1,12 +1,8 @@
 package com.pm.projectservice.config;
 
-import com.pm.projectservice.security.ProjectPermissionEvaluator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
-import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
-import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
@@ -15,7 +11,6 @@ import org.springframework.web.server.WebFilter;
 import com.pm.commonsecurity.security.UserIdHeaderWebFilter;
 
 @EnableWebFluxSecurity
-@EnableReactiveMethodSecurity
 @Configuration
 public class SecurityConfig {
 
@@ -39,13 +34,5 @@ public class SecurityConfig {
     @Bean
     public WebFilter userIdHeaderWebFilter() {
         return (WebFilter) new UserIdHeaderWebFilter();
-    }
-
-    @Bean
-    public MethodSecurityExpressionHandler methodSecurityExpressionHandler(
-            ProjectPermissionEvaluator projectPermissionEvaluator) {
-        DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();
-        expressionHandler.setPermissionEvaluator(projectPermissionEvaluator);
-        return expressionHandler;
     }
 }

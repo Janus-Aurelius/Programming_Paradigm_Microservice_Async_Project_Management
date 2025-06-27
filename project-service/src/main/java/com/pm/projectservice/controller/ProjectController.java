@@ -8,7 +8,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +25,7 @@ import com.pm.commoncontracts.domain.ProjectStatus;
 import com.pm.commoncontracts.dto.ProjectDto;
 import com.pm.commoncontracts.dto.TaskDto;
 import com.pm.commoncontracts.requestDto.project.UpdateProjectStatusRequestDto;
+import com.pm.projectservice.security.ReactiveProjectPermissionEvaluator;
 import com.pm.projectservice.service.ProjectService;
 
 import jakarta.validation.Valid;
@@ -40,143 +41,242 @@ import reactor.core.publisher.Mono;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final ReactiveProjectPermissionEvaluator permissionEvaluator;
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
     }
 
-    @PreAuthorize("hasPermission(null, 'PRJ_CREATE')")
     @PostMapping
     public Mono<ResponseEntity<ProjectDto>> createProject(
             @Valid @RequestBody ProjectDto projectDto,
             UriComponentsBuilder uriBuilder,
-            ServerHttpRequest request
+            ServerHttpRequest request,
+            Authentication authentication
     ) {
         log.info("Received request to create project: {}", projectDto);
-        String userId = extractUserIdFromHeader(request);
-        projectDto.setCreatedBy(userId);
-        return projectService.createProject(projectDto)
-                .map(createdProject -> {
-                    URI location = uriBuilder.path("/projects/{id}")
-                            .buildAndExpand(createdProject.getId())
-                            .toUri();
-                    log.info("Project created successfully with ID: {}", createdProject.getId());
-                    return ResponseEntity.created(location).body(createdProject);
+
+        return permissionEvaluator.hasGeneralPermission(authentication, "PRJ_CREATE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        String userId = extractUserIdFromHeader(request);
+                        projectDto.setCreatedBy(userId);
+                        return projectService.createProject(projectDto)
+                                .map(createdProject -> {
+                                    URI location = uriBuilder.path("/projects/{id}")
+                                            .buildAndExpand(createdProject.getId())
+                                            .toUri();
+                                    log.info("Project created successfully with ID: {}", createdProject.getId());
+                                    return ResponseEntity.created(location).body(createdProject);
+                                });
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build());
+                    }
                 });
     }
 
-    @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping
-    public Flux<ProjectDto> getAllProjects() {
+    public Flux<ProjectDto> getAllProjects(Authentication authentication) {
         log.info("Received request to get all projects");
-        return projectService.getAllProjects();
+
+        return permissionEvaluator.hasGeneralPermission(authentication, "PRJ_READ")
+                .flatMapMany(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.getAllProjects();
+                    } else {
+                        return Flux.empty(); // Return empty flux if no permission
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_READ')")
     @GetMapping("/{id}")
-    public Mono<ResponseEntity<ProjectDto>> getProjectById(@PathVariable String id) {
+    public Mono<ResponseEntity<ProjectDto>> getProjectById(@PathVariable String id, Authentication authentication) {
         log.info("Received request to get project by ID: {}", id);
+
         return projectService.getProjectById(id)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+                .flatMap(project -> {
+                    // Check if user has permission to read this project using reactive permission evaluator
+                    return permissionEvaluator.hasPermission(authentication, id, "PRJ_READ")
+                            .map(hasAccess -> {
+                                if (hasAccess) {
+                                    return ResponseEntity.ok(project);
+                                } else {
+                                    return ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build();
+                                }
+                            });
+                })
+                .switchIfEmpty(Mono.just(ResponseEntity.notFound().build()));
     }
 
-    @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping(params = "name")
-    public Flux<ProjectDto> getProjectByName(@RequestParam String name) {
-        return projectService.getProjectByName(name);
+    public Flux<ProjectDto> getProjectByName(@RequestParam String name, Authentication authentication) {
+        return permissionEvaluator.hasGeneralPermission(authentication, "PRJ_READ")
+                .flatMapMany(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.getProjectByName(name);
+                    } else {
+                        return Flux.empty();
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping(params = "owner")
-    public Flux<ProjectDto> getProjectByOwner(@RequestParam String owner) {
-        return projectService.getProjectByCreatedBy(owner);
+    public Flux<ProjectDto> getProjectByOwner(@RequestParam String owner, Authentication authentication) {
+        return permissionEvaluator.hasGeneralPermission(authentication, "PRJ_READ")
+                .flatMapMany(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.getProjectByCreatedBy(owner);
+                    } else {
+                        return Flux.empty();
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(null, 'PRJ_READ')")
     @GetMapping("/status/{status}")
-    public Flux<ProjectDto> getProjectsByStatus(@PathVariable ProjectStatus status) {
+    public Flux<ProjectDto> getProjectsByStatus(@PathVariable ProjectStatus status, Authentication authentication) {
         log.info("Received request to get projects with status: {}", status);
-        return projectService.getProjectsByStatus(status);
+
+        return permissionEvaluator.hasGeneralPermission(authentication, "PRJ_READ")
+                .flatMapMany(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.getProjectsByStatus(status);
+                    } else {
+                        return Flux.empty();
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_UPDATE')")
     @PutMapping("/{id}")
-    public Mono<ResponseEntity<ProjectDto>> updateProject(@PathVariable String id, @Valid @RequestBody ProjectDto projectDto) {
+    public Mono<ResponseEntity<ProjectDto>> updateProject(@PathVariable String id, @Valid @RequestBody ProjectDto projectDto, Authentication authentication) {
         log.info("Received request to update project with ID: {}", id);
-        return projectService.updateProject(id, projectDto)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+
+        return permissionEvaluator.hasPermission(authentication, id, "PRJ_UPDATE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.updateProject(id, projectDto)
+                                .map(ResponseEntity::ok)
+                                .defaultIfEmpty(ResponseEntity.notFound().build());
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build());
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#projectId, 'Project', 'PRJ_READ')")
     @GetMapping("/{projectId}/tasks/ids")
-    public Flux<String> getAllTaskIdsByProjectId(@PathVariable String projectId) {
+    public Flux<String> getAllTaskIdsByProjectId(@PathVariable String projectId, Authentication authentication) {
         log.info("Received request to get all task IDs for project: {}", projectId);
-        return projectService.getAllTaskIdsByProjectId(projectId);
+
+        return permissionEvaluator.hasPermission(authentication, projectId, "PRJ_READ")
+                .flatMapMany(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.getAllTaskIdsByProjectId(projectId);
+                    } else {
+                        return Flux.empty(); // Return empty flux if no permission
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#projectId, 'Project', 'TASK_CREATE')")
     @PostMapping("/{projectId}/tasks")
     public Mono<ResponseEntity<TaskDto>> createTaskForProject(
             @PathVariable String projectId,
             @Valid @RequestBody TaskDto taskDto,
-            UriComponentsBuilder uriBuilder
+            UriComponentsBuilder uriBuilder,
+            Authentication authentication
     ) {
         log.info("Received request to create a task for project {}: {}", projectId, taskDto);
-        return projectService.createTaskForProject(projectId, taskDto)
-                .map(createdTask -> {
-                    URI location = uriBuilder.path("/projects/{projectId}/tasks/{taskId}")
-                            .buildAndExpand(projectId, createdTask.getId())
-                            .toUri();
-                    log.info("Task created for project {} with ID: {}", projectId, createdTask.getId());
-                    return ResponseEntity.created(location).body(createdTask);
+
+        return permissionEvaluator.hasPermission(authentication, projectId, "TASK_CREATE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.createTaskForProject(projectId, taskDto)
+                                .map(createdTask -> {
+                                    URI location = uriBuilder.path("/projects/{projectId}/tasks/{taskId}")
+                                            .buildAndExpand(projectId, createdTask.getId())
+                                            .toUri();
+                                    log.info("Task created for project {} with ID: {}", projectId, createdTask.getId());
+                                    return ResponseEntity.created(location).body(createdTask);
+                                });
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<TaskDto>build());
+                    }
                 });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_STATUS_CHANGE')")
     @PutMapping("/{id}/status")
     public Mono<ResponseEntity<ProjectDto>> updateProjectStatus(
             @PathVariable String id,
-            @Valid @RequestBody UpdateProjectStatusRequestDto request
+            @Valid @RequestBody UpdateProjectStatusRequestDto request,
+            Authentication authentication
     ) {
         log.info("Received request to update status for project {} to {}", id, request.getNewStatus());
-        return projectService.updateProjectStatus(id, request.getNewStatus(), request.getExpectedVersion())
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+
+        return permissionEvaluator.hasPermission(authentication, id, "PRJ_STATUS_CHANGE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.updateProjectStatus(id, request.getNewStatus(), request.getExpectedVersion())
+                                .map(ResponseEntity::ok)
+                                .defaultIfEmpty(ResponseEntity.notFound().build());
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build());
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_UPDATE')")
     @PutMapping("/{id}/combined")
     public Mono<ResponseEntity<ProjectDto>> updateProjectCombined(
             @PathVariable String id,
-            @Valid @RequestBody ProjectDto dto
+            @Valid @RequestBody ProjectDto dto,
+            Authentication authentication
     ) {
         log.info("Received request to update project {} (combined fields)", id);
-        return projectService.updateProjectCombined(id, dto)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+
+        return permissionEvaluator.hasPermission(authentication, id, "PRJ_UPDATE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.updateProjectCombined(id, dto)
+                                .map(ResponseEntity::ok)
+                                .defaultIfEmpty(ResponseEntity.notFound().build());
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build());
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_DELETE')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono<Void> deleteProject(@PathVariable String id) {
+    public Mono<ResponseEntity<Void>> deleteProject(@PathVariable String id, Authentication authentication) {
         log.info("Received request to delete project with ID: {}", id);
-        return projectService.deleteProject(id);
+
+        return permissionEvaluator.hasPermission(authentication, id, "PRJ_DELETE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.deleteProject(id)
+                                .then(Mono.just(ResponseEntity.noContent().<Void>build()));
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<Void>build());
+                    }
+                });
     }
 
-    @PreAuthorize("hasPermission(#id, 'Project', 'PRJ_READ')")
     @GetMapping("/{id}/permissions/check")
-    public Mono<ResponseEntity<Map<String, Boolean>>> checkProjectPermissions(@PathVariable String id) {
-        log.info("Checking permissions for project ID: {}", id);
-        return projectService.getProjectById(id)
-                .map(project -> {
+    public Mono<ResponseEntity<Map<String, Boolean>>> checkProjectPermissions(
+            @PathVariable String id,
+            @RequestParam String action,
+            Authentication authentication) {
+        log.info("Checking permissions for project ID: {} with action: {}", id, action);
+
+        return permissionEvaluator.hasPermission(authentication, id, action)
+                .map(hasAccess -> {
                     Map<String, Boolean> permissions = new HashMap<>();
-                    permissions.put("hasAccess", true); // If we reach here, user has access
+                    permissions.put("hasAccess", hasAccess);
                     return ResponseEntity.ok(permissions);
                 })
-                .defaultIfEmpty(ResponseEntity.notFound().build());
+                .onErrorResume(e -> {
+                    log.error("Error checking permissions for project {}: {}", id, e.getMessage());
+                    Map<String, Boolean> permissions = new HashMap<>();
+                    permissions.put("hasAccess", false);
+                    return Mono.just(ResponseEntity.ok(permissions));
+                });
     }
 
 }

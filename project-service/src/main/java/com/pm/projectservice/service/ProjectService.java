@@ -1,15 +1,16 @@
 package com.pm.projectservice.service;
 
 // Shared module imports
+import java.time.Instant;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
-import org.springframework.stereotype.Service; // Import your event payload records
-import org.springframework.web.reactive.function.client.WebClient; // Assuming this provides the context key
+import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate; // Import your event payload records
+import org.springframework.stereotype.Service; // Assuming this provides the context key
+import org.springframework.web.reactive.function.client.WebClient;
 
 import com.pm.commoncontracts.domain.ProjectStatus;
-import com.pm.commoncontracts.domain.ProjectPriority;
 import com.pm.commoncontracts.dto.ProjectDto; // Using your existing mapper utility
 import com.pm.commoncontracts.dto.TaskDto; // Your internal domain entity
 import com.pm.commoncontracts.envelope.EventEnvelope;
@@ -27,17 +28,13 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.context.ContextView;
 
-import java.time.Instant;
-
 @Service
 public class ProjectService {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
     private final ProjectRepository projectRepository;
     private final ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate;
-    private final WebClient taskServiceWebClient = WebClient.builder()
-            .baseUrl("http://localhost:8081/api/tasks") // Adjust if service discovery/gateway is used
-            .build();
+    private final WebClient taskServiceWebClient;
 
     @Value("${spring.application.name}")
     private String serviceName;
@@ -46,9 +43,13 @@ public class ProjectService {
 
     // Constructor injection
     public ProjectService(ProjectRepository projectRepository,
-            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate) {
+            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
+            @Value("${services.task-service.url}") String taskServiceUrl) {
         this.projectRepository = projectRepository;
         this.kafkaTemplate = kafkaTemplate;
+        this.taskServiceWebClient = WebClient.builder()
+                .baseUrl(taskServiceUrl + "/api/tasks")
+                .build();
     }
 
     // ==============================
@@ -202,22 +203,43 @@ public class ProjectService {
         return Mono.deferContextual(contextView
                 -> projectRepository.findById(id)
                         .flatMap(existingProject -> {
-                            existingProject.setName(projectDto.getName());
-                            existingProject.setDescription(projectDto.getDescription());
-                            existingProject.setCreatedBy(projectDto.getCreatedBy());
-                            existingProject.setAssignedTo(projectDto.getAssignedTo());
+                            // Validate optimistic locking if version is provided
+                            if (projectDto.getVersion() != null && !projectDto.getVersion().equals(existingProject.getVersion())) {
+                                return Mono.error(new RuntimeException("Project has been modified by another user. Please refresh and try again."));
+                            }
+
+                            // Update only the fields that are provided, keeping the existing project's ID and version
+                            if (projectDto.getName() != null) {
+                                existingProject.setName(projectDto.getName());
+                            }
+                            if (projectDto.getDescription() != null) {
+                                existingProject.setDescription(projectDto.getDescription());
+                            }
+                            if (projectDto.getStatus() != null) {
+                                existingProject.setStatus(projectDto.getStatus());
+                            }
+                            if (projectDto.getPriority() != null) {
+                                existingProject.setPriority(projectDto.getPriority());
+                            }
+                            if (projectDto.getCreatedBy() != null) {
+                                existingProject.setCreatedBy(projectDto.getCreatedBy());
+                            }
+                            if (projectDto.getAssignedTo() != null) {
+                                existingProject.setAssignedTo(projectDto.getAssignedTo());
+                            }
                             if (projectDto.getStartDate() != null) {
                                 existingProject.setStartDate(Instant.parse(projectDto.getStartDate()));
-                            } else {
-                                existingProject.setStartDate(null);
                             }
                             if (projectDto.getEndDate() != null) {
                                 existingProject.setEndDate(Instant.parse(projectDto.getEndDate()));
-                            } else {
-                                existingProject.setEndDate(null);
                             }
-                            existingProject.setMemberIds(projectDto.getMemberIds());
-                            existingProject.setPriority(projectDto.getPriority()); // Direct assignment, no valueOf needed
+                            if (projectDto.getMemberIds() != null) {
+                                existingProject.setMemberIds(projectDto.getMemberIds());
+                            }
+                            if (projectDto.getManagerIds() != null) {
+                                existingProject.setManagerIds(projectDto.getManagerIds());
+                            }
+                            // Keep the existing version - Spring Data will handle version increment automatically
                             return projectRepository.save(existingProject)
                                     .doOnError(e -> log.error("Error updating project with ID: {}", id, e))
                                     .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project", e)))

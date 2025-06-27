@@ -1,7 +1,8 @@
-
 // MongoDB Docker initialization script
 // This script runs when the MongoDB container starts for the first time
 // Development version - No authentication required
+
+print("=== Running 01-init-mongo.js ===");
 
 // Create databases for each microservice
 // Note: Databases will be created automatically when first data is inserted

@@ -1,11 +1,8 @@
 package com.pm.taskservice.config;
 
-import com.pm.taskservice.security.TaskPermissionEvaluator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
-import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -39,13 +36,5 @@ public class SecurityConfig {
     @Bean
     public WebFilter userIdHeaderWebFilter() {
         return new UserIdHeaderWebFilter();
-    }
-
-    @Bean
-    public MethodSecurityExpressionHandler methodSecurityExpressionHandler(
-            TaskPermissionEvaluator taskPermissionEvaluator) {
-        DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();
-        expressionHandler.setPermissionEvaluator(taskPermissionEvaluator);
-        return expressionHandler;
     }
 }

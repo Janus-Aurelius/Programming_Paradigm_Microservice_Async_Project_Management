@@ -10,6 +10,7 @@ import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.pm.commoncontracts.domain.NotificationChannel;
 import com.pm.commoncontracts.domain.TaskStatus;
 import com.pm.commoncontracts.dto.CommentDto;
 import com.pm.commoncontracts.dto.NotificationDto;
@@ -17,7 +18,8 @@ import com.pm.commoncontracts.dto.TaskDto;
 import com.pm.commoncontracts.dto.UserDto;
 import com.pm.commoncontracts.envelope.EventEnvelope;
 import com.pm.commoncontracts.events.comment.CommentAddedEventPayload;
-import com.pm.commoncontracts.domain.NotificationChannel;
+import com.pm.commoncontracts.events.comment.CommentDeletedEventPayload;
+import com.pm.commoncontracts.events.comment.CommentEditedEventPayload;
 import com.pm.commoncontracts.events.notification.NotificationEvent;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
@@ -36,20 +38,20 @@ import com.pm.notificationservice.utils.NotificationUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-
 @Service
 public class NotificationService {
+
     private static final Logger logger = LoggerFactory.getLogger(NotificationService.class);
-    
+
     private final NotificationRepository notificationRepository;
     private final ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate;
     private final WebClient taskWebClient;
     private final WebClient projectWebClient;
 
-    @Value("${spring.application.name}") 
+    @Value("${spring.application.name}")
     private String serviceName;
-    
-    @Value("${kafka.topic.notification-dispatch}") 
+
+    @Value("${kafka.topic.notification-dispatch}")
     private String dispatchTopic;
 
     public NotificationService(
@@ -70,12 +72,12 @@ public class NotificationService {
             logger.debug("Processing incoming event. Type: {}, CorrID: {}", incomingEnvelope.eventType(), correlationId);
             return generateNotificationsFromEvent(incomingEnvelope, correlationId)
                     .flatMap(notification -> saveAndTriggerDispatch(notification, correlationId)
-                        .doOnError(e -> logger.error("Error saving/dispatching notification. CorrID: {}", correlationId, e))
-                        .onErrorResume(e -> {
-                            // TODO: Optionally send to dead-letter topic here
-                            logger.error("Unrecoverable error saving/dispatching notification. CorrID: {}", correlationId, e);
-                            return Mono.empty();
-                        })
+                    .doOnError(e -> logger.error("Error saving/dispatching notification. CorrID: {}", correlationId, e))
+                    .onErrorResume(e -> {
+                        // TODO: Optionally send to dead-letter topic here
+                        logger.error("Unrecoverable error saving/dispatching notification. CorrID: {}", correlationId, e);
+                        return Mono.empty();
+                    })
                     )
                     .onErrorContinue((throwable, o) -> logger.error("Unhandled error in notification processing, skipping element", throwable))
                     .then();
@@ -95,6 +97,12 @@ public class NotificationService {
             if (payload instanceof CommentAddedEventPayload commentAddedEventPayload) {
                 return handleCommentAddedEvent(commentAddedEventPayload, envelope.eventType(), correlationId);
             }
+            if (payload instanceof CommentDeletedEventPayload commentDeletedEventPayload) {
+                return handleCommentDeletedEvent(commentDeletedEventPayload, envelope.eventType(), correlationId);
+            }
+            if (payload instanceof CommentEditedEventPayload commentEditedEventPayload) {
+                return handleCommentEditedEvent(commentEditedEventPayload, envelope.eventType(), correlationId);
+            }
             if (payload instanceof ProjectCreatedEventPayload projectCreatedEventPayload) {
                 return handleProjectCreatedEvent(projectCreatedEventPayload, envelope.eventType());
             }
@@ -113,12 +121,12 @@ public class NotificationService {
             // ProjectUpdatedEventPayload, ProjectStatusChangedEventPayload: no notification per your rule
             // ProjectDeletedEventPayload, UserCreatedEventPayload, UserUpdatedEventPayload: ignored
 
-            logger.warn("Unhandled event type for notification generation: {}. CorrID: {}", 
-                envelope.eventType(), correlationId);
+            logger.warn("Unhandled event type for notification generation: {}. CorrID: {}",
+                    envelope.eventType(), correlationId);
             return Flux.empty();
         } catch (Exception e) {
-            logger.error("Error generating notifications for event type: {}. CorrID: {}", 
-                envelope.eventType(), correlationId, e);
+            logger.error("Error generating notifications for event type: {}. CorrID: {}",
+                    envelope.eventType(), correlationId, e);
             return Flux.empty();
         }
     }
@@ -134,20 +142,20 @@ public class NotificationService {
         String taskName = taskDto.getName();
         String message = String.format("Task '%s' was assigned to you", taskName);
         return Flux.just(Notification.builder()
-            .recipientUserId(assigneeId)
-            .event(NotificationEvent.TASK_ASSIGNED)
-            .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
-            .entityId(taskDto.getId())
-            .channel(NotificationChannel.WEBSOCKET)
-            .message(message)
-            .read(false)
-            .createdAt(java.time.Instant.now())
-            .build());
+                .recipientUserId(assigneeId)
+                .event(NotificationEvent.TASK_ASSIGNED)
+                .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
+                .entityId(taskDto.getId())
+                .channel(NotificationChannel.WEBSOCKET)
+                .message(message)
+                .read(false)
+                .createdAt(java.time.Instant.now())
+                .build());
     }
 
     private Flux<Notification> handleTaskStatusChangedEvent(TaskStatusChangedEventPayload taskStatusChanged, String eventType) {
         TaskDto updatedTask = taskStatusChanged.taskDto();
-        
+
         if (updatedTask.getStatus() == TaskStatus.BLOCKED) {
             String assigneeId = updatedTask.getAssigneeId();
             if (assigneeId == null) {
@@ -157,23 +165,23 @@ public class NotificationService {
 
             String taskName = updatedTask.getName();
             String message = String.format("Task '%s' you are assigned to was marked as BLOCKED", taskName);
-            
+
             return Flux.just(Notification.builder()
-                .recipientUserId(assigneeId)
-                .event(NotificationEvent.TASK_STATUS_CHANGED)
-                .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
-                .entityId(updatedTask.getId())
-                .channel(NotificationChannel.WEBSOCKET)
-                .message(message)
-                .read(false)
-                .createdAt(java.time.Instant.now())
-                .build());
+                    .recipientUserId(assigneeId)
+                    .event(NotificationEvent.TASK_STATUS_CHANGED)
+                    .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
+                    .entityId(updatedTask.getId())
+                    .channel(NotificationChannel.WEBSOCKET)
+                    .message(message)
+                    .read(false)
+                    .createdAt(java.time.Instant.now())
+                    .build());
         }
-        
+
         return Flux.empty();
     }
 
-    private Flux<Notification> handleCommentAddedEvent(CommentAddedEventPayload commentAdded, 
+    private Flux<Notification> handleCommentAddedEvent(CommentAddedEventPayload commentAdded,
             String eventType, String correlationId) {
         CommentDto commentDto = commentAdded.commentDto();
         String parentId = commentDto.getParentId();
@@ -183,9 +191,53 @@ public class NotificationService {
         String commentText = commentDto.getContent();
         Set<String> mentionedUsernames = MentionUtils.extractMentions(commentText);
 
-        logger.info("CommentAddedEvent received for {} {}. Author: {}. CorrID: {}", 
-            parentType, parentId, authorUsername, correlationId);
+        logger.info("CommentAddedEvent received for {} {}. Author: {}. CorrID: {}",
+                parentType, parentId, authorUsername, correlationId);
 
+        if ("TASK".equals(parentType)) {
+            return getTaskCommentNotifications(parentId, authorUsername, commentId, eventType, mentionedUsernames);
+        } else if ("PROJECT".equals(parentType)) {
+            return getProjectCommentNotifications(parentId, authorUsername, commentId, eventType, mentionedUsernames);
+        }
+
+        return Flux.empty();
+    }
+
+    private Flux<Notification> handleCommentDeletedEvent(CommentDeletedEventPayload commentDeleted,
+            String eventType, String correlationId) {
+        CommentDto commentDto = commentDeleted.commentDto();
+        String parentId = commentDto.getParentId();
+        String parentType = commentDto.getParentType().name();
+        String authorUsername = commentDto.getUsername();
+        String commentId = commentDto.getId();
+
+        logger.info("CommentDeletedEvent received for {} {}. Author: {}. CorrID: {}",
+                parentType, parentId, authorUsername, correlationId);
+
+        // For comment deletion, notify relevant users that a comment was removed
+        if ("TASK".equals(parentType)) {
+            return getTaskCommentNotifications(parentId, authorUsername, commentId, eventType, Set.of());
+        } else if ("PROJECT".equals(parentType)) {
+            return getProjectCommentNotifications(parentId, authorUsername, commentId, eventType, Set.of());
+        }
+
+        return Flux.empty();
+    }
+
+    private Flux<Notification> handleCommentEditedEvent(CommentEditedEventPayload commentEdited,
+            String eventType, String correlationId) {
+        CommentDto commentDto = commentEdited.commentDto();
+        String parentId = commentDto.getParentId();
+        String parentType = commentDto.getParentType().name();
+        String authorUsername = commentDto.getUsername();
+        String commentId = commentDto.getId();
+        String commentText = commentDto.getContent();
+        Set<String> mentionedUsernames = MentionUtils.extractMentions(commentText);
+
+        logger.info("CommentEditedEvent received for {} {}. Author: {}. CorrID: {}",
+                parentType, parentId, authorUsername, correlationId);
+
+        // For comment editing, notify users about the edit and any new mentions
         if ("TASK".equals(parentType)) {
             return getTaskCommentNotifications(parentId, authorUsername, commentId, eventType, mentionedUsernames);
         } else if ("PROJECT".equals(parentType)) {
@@ -200,15 +252,15 @@ public class NotificationService {
         if (projectDto.getOwnerId() != null) {
             String message = String.format("You have been assigned as owner of the new project '%s'", projectDto.getName());
             return Flux.just(Notification.builder()
-                .recipientUserId(projectDto.getOwnerId())
-                .event(NotificationEvent.PROJECT_CREATED)
-                .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
-                .entityId(projectDto.getId())
-                .channel(NotificationChannel.WEBSOCKET)
-                .message(message)
-                .read(false)
-                .createdAt(java.time.Instant.now())
-                .build());
+                    .recipientUserId(projectDto.getOwnerId())
+                    .event(NotificationEvent.PROJECT_CREATED)
+                    .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                    .entityId(projectDto.getId())
+                    .channel(NotificationChannel.WEBSOCKET)
+                    .message(message)
+                    .read(false)
+                    .createdAt(java.time.Instant.now())
+                    .build());
         }
         return Flux.empty();
     }
@@ -219,15 +271,15 @@ public class NotificationService {
         if (assigneeId != null) {
             String message = String.format("A new task '%s' has been assigned to you in project", taskDto.getName());
             return Flux.just(Notification.builder()
-                .recipientUserId(assigneeId)
-                .event(NotificationEvent.PROJECT_TASK_CREATED)
-                .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
-                .entityId(taskDto.getId())
-                .channel(NotificationChannel.WEBSOCKET)
-                .message(message)
-                .read(false)
-                .createdAt(java.time.Instant.now())
-                .build());
+                    .recipientUserId(assigneeId)
+                    .event(NotificationEvent.PROJECT_TASK_CREATED)
+                    .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
+                    .entityId(taskDto.getId())
+                    .channel(NotificationChannel.WEBSOCKET)
+                    .message(message)
+                    .read(false)
+                    .createdAt(java.time.Instant.now())
+                    .build());
         }
         return Flux.empty();
     }
@@ -252,15 +304,15 @@ public class NotificationService {
         String assigneeId = taskDto.getAssigneeId();
         if (assigneeId != null) {
             return Flux.just(Notification.builder()
-                .recipientUserId(assigneeId)
-                .event(NotificationEvent.valueOf(eventType))
-                .entityType(com.pm.commoncontracts.domain.ParentType.valueOf(type))
-                .entityId(taskDto.getId())
-                .channel(NotificationChannel.WEBSOCKET)
-                .message(message)
-                .read(false)
-                .createdAt(java.time.Instant.now())
-                .build());
+                    .recipientUserId(assigneeId)
+                    .event(NotificationEvent.valueOf(eventType))
+                    .entityType(com.pm.commoncontracts.domain.ParentType.valueOf(type))
+                    .entityId(taskDto.getId())
+                    .channel(NotificationChannel.WEBSOCKET)
+                    .message(message)
+                    .read(false)
+                    .createdAt(java.time.Instant.now())
+                    .build());
         }
         return Flux.empty();
     }
@@ -268,96 +320,113 @@ public class NotificationService {
     private Flux<Notification> getTaskCommentNotifications(String taskId, String authorUsername, String commentId,
             String eventType, Set<String> mentionedUsernames) {
         return taskWebClient.get()
-            .uri("/tasks/{id}/assignee", taskId)
-            .retrieve()
-            .bodyToMono(UserDto.class)
-            .flatMapMany(assignee -> {
-                String assigneeId = assignee.getId();
-                if (assigneeId.equals(authorUsername)) {
-                    logger.debug("Comment author is the assignee, no notification needed for task {}", taskId);
-                    return Flux.empty();
-                }
+                .uri("/tasks/{id}/assignee", taskId)
+                .retrieve()
+                .bodyToMono(UserDto.class)
+                .flatMapMany(assignee -> {
+                    String assigneeId = assignee.getId();
+                    if (assigneeId.equals(authorUsername)) {
+                        logger.debug("Comment author is the assignee, no notification needed for task {}", taskId);
+                        return Flux.empty();
+                    }
 
-                Notification assigneeNotification = Notification.builder()
-                    .recipientUserId(assigneeId)
-                    .event(NotificationEvent.valueOf(eventType))
-                    .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
-                    .entityId(taskId)
-                    .channel(NotificationChannel.WEBSOCKET)
-                    .message("A new comment was added to task you are assigned to")
-                    .read(false)
-                    .createdAt(java.time.Instant.now())
-                    .build();
+                    String message = getCommentNotificationMessage(eventType, "task you are assigned to");
+                    Notification assigneeNotification = Notification.builder()
+                            .recipientUserId(assigneeId)
+                            .event(NotificationEvent.valueOf(eventType))
+                            .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
+                            .entityId(taskId)
+                            .channel(NotificationChannel.WEBSOCKET)
+                            .message(message)
+                            .read(false)
+                            .createdAt(java.time.Instant.now())
+                            .build();
 
-                Flux<Notification> mentionNotifications = Flux.fromIterable(mentionedUsernames)
-                    .map(username -> Notification.builder()
-                        .recipientUserId(username)
-                        .event(NotificationEvent.valueOf(eventType))
-                        .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
-                        .entityId(taskId)
-                        .channel(NotificationChannel.WEBSOCKET)
-                        .message("You were mentioned in a comment on task")
-                        .read(false)
-                        .createdAt(java.time.Instant.now())
-                        .build());
+                    String mentionMessage = getCommentNotificationMessage(eventType, "task");
+                    Flux<Notification> mentionNotifications = Flux.fromIterable(mentionedUsernames)
+                            .map(username -> Notification.builder()
+                            .recipientUserId(username)
+                            .event(NotificationEvent.valueOf(eventType))
+                            .entityType(com.pm.commoncontracts.domain.ParentType.TASK)
+                            .entityId(taskId)
+                            .channel(NotificationChannel.WEBSOCKET)
+                            .message("You were mentioned in a comment on " + mentionMessage.toLowerCase().replace("a comment was", "a").replace("A comment was", "a"))
+                            .read(false)
+                            .createdAt(java.time.Instant.now())
+                            .build());
 
-                return Flux.concat(Flux.just(assigneeNotification), mentionNotifications);
-            });
+                    return Flux.concat(Flux.just(assigneeNotification), mentionNotifications);
+                });
     }
 
     private Flux<Notification> getProjectCommentNotifications(String projectId, String authorUsername, String commentId,
             String eventType, Set<String> mentionedUsernames) {
         return projectWebClient.get()
-            .uri("/projects/{id}/owner", projectId)
-            .retrieve()
-            .bodyToMono(UserDto.class)
-            .flatMapMany(owner -> {
-                String ownerId = owner.getId();
-                if (ownerId.equals(authorUsername)) {
-                    logger.debug("Comment author is the owner, no notification needed for project {}", projectId);
-                    return Flux.empty();
-                }
+                .uri("/projects/{id}/owner", projectId)
+                .retrieve()
+                .bodyToMono(UserDto.class)
+                .flatMapMany(owner -> {
+                    String ownerId = owner.getId();
+                    if (ownerId.equals(authorUsername)) {
+                        logger.debug("Comment author is the owner, no notification needed for project {}", projectId);
+                        return Flux.empty();
+                    }
 
-                Notification ownerNotification = Notification.builder()
-                    .recipientUserId(ownerId)
-                    .event(NotificationEvent.valueOf(eventType))
-                    .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
-                    .entityId(projectId)
-                    .channel(NotificationChannel.WEBSOCKET)
-                    .message("A new comment was added to project you own")
-                    .read(false)
-                    .createdAt(java.time.Instant.now())
-                    .build();
+                    String message = getCommentNotificationMessage(eventType, "project you own");
+                    Notification ownerNotification = Notification.builder()
+                            .recipientUserId(ownerId)
+                            .event(NotificationEvent.valueOf(eventType))
+                            .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                            .entityId(projectId)
+                            .channel(NotificationChannel.WEBSOCKET)
+                            .message(message)
+                            .read(false)
+                            .createdAt(java.time.Instant.now())
+                            .build();
 
-                Flux<Notification> mentionNotifications = Flux.fromIterable(mentionedUsernames)
-                    .map(username -> Notification.builder()
-                        .recipientUserId(username)
-                        .event(NotificationEvent.valueOf(eventType))
-                        .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
-                        .entityId(projectId)
-                        .channel(NotificationChannel.WEBSOCKET)
-                        .message("You were mentioned in a comment on project")
-                        .read(false)
-                        .createdAt(java.time.Instant.now())
-                        .build());
+                    String mentionMessage = getCommentNotificationMessage(eventType, "project");
+                    Flux<Notification> mentionNotifications = Flux.fromIterable(mentionedUsernames)
+                            .map(username -> Notification.builder()
+                            .recipientUserId(username)
+                            .event(NotificationEvent.valueOf(eventType))
+                            .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                            .entityId(projectId)
+                            .channel(NotificationChannel.WEBSOCKET)
+                            .message("You were mentioned in a comment on " + mentionMessage.toLowerCase().replace("a comment was", "a").replace("A comment was", "a"))
+                            .read(false)
+                            .createdAt(java.time.Instant.now())
+                            .build());
 
-                return Flux.concat(Flux.just(ownerNotification), mentionNotifications);
-            });
+                    return Flux.concat(Flux.just(ownerNotification), mentionNotifications);
+                });
     }
 
     private Mono<Void> saveAndTriggerDispatch(Notification notification, String correlationId) {
         return notificationRepository.save(notification)
-            .doOnSuccess(savedNotification -> logger.info("Notification saved. CorrID: {}", correlationId))
-            .flatMap(savedNotification -> {
-                NotificationToSendEventPayload payload = NotificationUtils.toNotificationToSendEventPayload(savedNotification);
-                EventEnvelope<NotificationToSendEventPayload> envelope = new EventEnvelope<>(
-                    serviceName,
-                    dispatchTopic,
-                    correlationId,
-                    payload
-                );
-                return kafkaTemplate.send(dispatchTopic, envelope).then();
-            });
+                .doOnSuccess(savedNotification -> logger.info("Notification saved. CorrID: {}", correlationId))
+                .flatMap(savedNotification -> {
+                    NotificationToSendEventPayload payload = NotificationUtils.toNotificationToSendEventPayload(savedNotification);
+                    EventEnvelope<NotificationToSendEventPayload> envelope = new EventEnvelope<>(
+                            serviceName,
+                            dispatchTopic,
+                            correlationId,
+                            payload
+                    );
+                    return kafkaTemplate.send(dispatchTopic, envelope).then();
+                });
+    }
+
+    private String getCommentNotificationMessage(String eventType, String context) {
+        return switch (eventType) {
+            case "COMMENT_ADDED" ->
+                "A new comment was added to " + context;
+            case "COMMENT_DELETED" ->
+                "A comment was deleted from " + context;
+            case "COMMENT_EDITED" ->
+                "A comment was edited on " + context;
+            default ->
+                "A comment was updated on " + context;
+        };
     }
 
     public Flux<NotificationDto> getNotificationsForUser(String recipientUserId) {

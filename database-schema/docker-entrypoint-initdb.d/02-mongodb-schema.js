@@ -1,3 +1,5 @@
+print("=== Running 02-mongodb-schema.js ===");
+
 // MongoDB Database Schema for Project Management Microservices
 // This script creates collections with validation rules and indexes
 // Each microservice has its own database for proper isolation
@@ -100,29 +102,29 @@ db.createCollection("projects", {
         priority: {
           enum: ["LOW", "MEDIUM", "HIGH"],
         },
-        ownerId: { bsonType: "string" },
+        ownerId: { bsonType: "objectId" },
         managerIds: {
           bsonType: "array",
-          items: { bsonType: "string" },
+          items: { bsonType: "objectId" },
         },
         memberIds: {
           bsonType: "array",
-          items: { bsonType: "string" },
+          items: { bsonType: "objectId" },
         },
         startDate: { bsonType: "date" },
         endDate: { bsonType: "date" },
         assignedTo: {
           bsonType: "array",
-          items: { bsonType: "string" },
+          items: { bsonType: "objectId" },
         },
         taskIds: {
           bsonType: "array",
-          items: { bsonType: "string" },
+          items: { bsonType: "objectId" },
         },
         createdAt: { bsonType: "date" },
         updatedAt: { bsonType: "date" },
-        createdBy: { bsonType: "string" },
-        lastModifiedBy: { bsonType: "string" },
+        createdBy: { bsonType: "objectId" },
+        lastModifiedBy: { bsonType: "objectId" },
         version: { bsonType: "long" },
       },
     },
@@ -153,7 +155,7 @@ db.createCollection("tasks", {
       required: ["projectId", "name", "status", "priority", "createdBy"],
       properties: {
         _id: { bsonType: "objectId" },
-        projectId: { bsonType: "string" },
+        projectId: { bsonType: "objectId" },
         name: {
           bsonType: "string",
           minLength: 1,
@@ -169,12 +171,12 @@ db.createCollection("tasks", {
           bsonType: "string",
           maxLength: 5000,
         },
-        createdBy: { bsonType: "string" },
-        updatedBy: { bsonType: "string" },
+        createdBy: { bsonType: "objectId" },
+        updatedBy: { bsonType: "objectId" },
         createdAt: { bsonType: "date" },
         updatedAt: { bsonType: "date" },
         dueDate: { bsonType: "date" },
-        assigneeId: { bsonType: "string" },
+        assigneeId: { bsonType: "objectId" },
         tags: {
           bsonType: "array",
           items: { bsonType: "string" },
@@ -189,7 +191,7 @@ db.createCollection("tasks", {
               originalName: { bsonType: "string" },
               contentType: { bsonType: "string" },
               size: { bsonType: "long" },
-              uploadedBy: { bsonType: "string" },
+              uploadedBy: { bsonType: "objectId" },
               uploadedAt: { bsonType: "date" },
               url: { bsonType: "string" },
             },
@@ -225,7 +227,7 @@ db.createCollection("comments", {
       required: ["parentId", "parentType", "content", "userId"],
       properties: {
         _id: { bsonType: "objectId" },
-        parentId: { bsonType: "string" },
+        parentId: { bsonType: "objectId" },
         parentType: {
           enum: ["PROJECT", "TASK", "COMMENT"],
         },
@@ -234,11 +236,11 @@ db.createCollection("comments", {
           minLength: 1,
           maxLength: 5000,
         },
-        userId: { bsonType: "string" },
+        userId: { bsonType: "objectId" },
         displayName: { bsonType: "string" },
         createdAt: { bsonType: "date" },
         updatedAt: { bsonType: "date" },
-        parentCommentId: { bsonType: "string" },
+        parentCommentId: { bsonType: "objectId" },
         version: { bsonType: "long" },
         deleted: { bsonType: "bool" },
       },
@@ -274,7 +276,7 @@ db.createCollection("notifications", {
       ],
       properties: {
         _id: { bsonType: "objectId" },
-        recipientUserId: { bsonType: "string" },
+        recipientUserId: { bsonType: "objectId" },
         eventType: {
           enum: [
             "TASK_ASSIGNED",
@@ -292,7 +294,7 @@ db.createCollection("notifications", {
         entityType: {
           enum: ["USER", "PROJECT", "TASK", "COMMENT"],
         },
-        entityId: { bsonType: "string" },
+        entityId: { bsonType: "objectId" },
         channel: {
           enum: ["EMAIL", "IN_APP", "PUSH", "SMS"],
         },

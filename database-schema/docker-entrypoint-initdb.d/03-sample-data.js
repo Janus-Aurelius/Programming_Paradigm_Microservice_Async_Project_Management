@@ -1,14 +1,21 @@
-// Sample Data Insertion Script for Project Management System (ObjectId Reference Version)
-// This script inserts sample data for testing and development purposes
-// All references use real MongoDB ObjectIds for schema compliance
+// =================================================================
+// FULLY CORRECTED Sample Data Insertion Script
+// =================================================================
+// This script inserts sample data and correctly establishes all two-way relationships
+// between users, projects, tasks, and comments.
+
+print("=== Running 03-sample-data.js ===");
+print("Starting sample data insertion...");
 
 // =======================================
-// INSERT SAMPLE USERS (userdb)
+//  Step 1: Insert Users
 // =======================================
 db = db.getSiblingDB("userdb");
+db.users.drop(); // Optional: Clean slate for idempotency
 
 const users = [
   {
+    _id: ObjectId("685cccd043a91a99a02f669b"),
     username: "admin",
     email: "admin@projectmanagement.com",
     password: "admin123",
@@ -17,15 +24,10 @@ const users = [
     active: true,
     firstName: "Admin",
     lastName: "User",
-    createdAt: new Date("2024-01-01T00:00:00Z"),
-    updatedAt: new Date("2024-01-01T00:00:00Z"),
-    lastLogin: new Date("2024-12-01T10:00:00Z"),
-    emailVerified: true,
-    locked: false,
-    profilePictureUrl:
-      "https://ui-avatars.com/api/?name=Admin+User&background=0D8ABC&color=fff",
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f669c"),
     username: "john_doe",
     email: "john.doe@company.com",
     password: "password123",
@@ -34,15 +36,10 @@ const users = [
     active: true,
     firstName: "John",
     lastName: "Doe",
-    createdAt: new Date("2024-01-15T00:00:00Z"),
-    updatedAt: new Date("2024-01-15T00:00:00Z"),
-    lastLogin: new Date("2024-12-01T09:30:00Z"),
-    emailVerified: true,
-    locked: false,
-    profilePictureUrl:
-      "https://ui-avatars.com/api/?name=John+Doe&background=28a745&color=fff",
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f669d"),
     username: "jane_smith",
     email: "jane.smith@company.com",
     password: "password123",
@@ -51,15 +48,10 @@ const users = [
     active: true,
     firstName: "Jane",
     lastName: "Smith",
-    createdAt: new Date("2024-01-20T00:00:00Z"),
-    updatedAt: new Date("2024-01-20T00:00:00Z"),
-    lastLogin: new Date("2024-12-01T08:45:00Z"),
-    emailVerified: true,
-    locked: false,
-    profilePictureUrl:
-      "https://ui-avatars.com/api/?name=Jane+Smith&background=6f42c1&color=fff",
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f669e"),
     username: "mike_wilson",
     email: "mike.wilson@company.com",
     password: "password123",
@@ -68,15 +60,10 @@ const users = [
     active: true,
     firstName: "Mike",
     lastName: "Wilson",
-    createdAt: new Date("2024-02-01T00:00:00Z"),
-    updatedAt: new Date("2024-02-01T00:00:00Z"),
-    lastLogin: new Date("2024-12-01T11:15:00Z"),
-    emailVerified: true,
-    locked: false,
-    profilePictureUrl:
-      "https://ui-avatars.com/api/?name=Mike+Wilson&background=fd7e14&color=fff",
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f669f"),
     username: "sarah_brown",
     email: "sarah.brown@company.com",
     password: "password123",
@@ -85,479 +72,278 @@ const users = [
     active: true,
     firstName: "Sarah",
     lastName: "Brown",
-    createdAt: new Date("2024-02-10T00:00:00Z"),
-    updatedAt: new Date("2024-02-10T00:00:00Z"),
-    lastLogin: new Date("2024-11-30T16:20:00Z"),
-    emailVerified: true,
-    locked: false,
-    profilePictureUrl:
-      "https://ui-avatars.com/api/?name=Sarah+Brown&background=e83e8c&color=fff",
+    version: 0,
   },
 ];
 
-const userInsertResult = db.users.insertMany(users);
+// We are defining _ids upfront to make referencing easier and deterministic.
+// This is a good practice for seeding scripts.
+db.users.insertMany(users);
+
+// Create a map from username to ObjectId for easy lookup.
 const userIdMap = {};
-users.forEach((u, i) => {
-  userIdMap[u.username] = userInsertResult.insertedIds[i];
+users.forEach((u) => {
+  userIdMap[u.username] = u._id.valueOf();
 });
-print("Sample users inserted successfully into userdb!");
+print("✅ Step 1: Sample users inserted successfully.");
 
 // =======================================
-// INSERT SAMPLE PROJECTS (projectdb)
+//  Step 2: Insert Projects
 // =======================================
 db = db.getSiblingDB("projectdb");
+db.projects.drop(); // Optional: Clean slate
+
 const projects = [
   {
+    _id: ObjectId("685cccd043a91a99a02f66a0"),
     name: "E-Commerce Platform Redesign",
-    description:
-      "Complete redesign of the company's e-commerce platform with modern UI/UX and improved performance",
-    status: "IN_PROGRESS", // changed from "ACTIVE"
+    description: "Complete redesign of the company's e-commerce platform.",
+    status: "IN_PROGRESS",
     priority: "HIGH",
-    ownerId: String(userIdMap["john_doe"]),
-    managerIds: [String(userIdMap["john_doe"])],
+    ownerId: userIdMap["john_doe"],
+    managerIds: [userIdMap["john_doe"]],
     memberIds: [
-      String(userIdMap["jane_smith"]),
-      String(userIdMap["mike_wilson"]),
-      String(userIdMap["sarah_brown"]),
+      userIdMap["jane_smith"],
+      userIdMap["mike_wilson"],
+      userIdMap["sarah_brown"],
     ],
-    startDate: new Date("2024-03-01T00:00:00Z"),
-    endDate: new Date("2024-06-30T00:00:00Z"),
-    assignedTo: [
-      String(userIdMap["jane_smith"]),
-      String(userIdMap["mike_wilson"]),
-    ],
-    taskIds: [], // Will be filled after tasks are inserted
-    createdAt: new Date("2024-02-15T00:00:00Z"),
-    updatedAt: new Date("2024-11-30T00:00:00Z"),
-    createdBy: String(userIdMap["john_doe"]),
-    lastModifiedBy: String(userIdMap["john_doe"]),
-    version: NumberLong(1),
+    createdBy: userIdMap["john_doe"],
+    taskIds: [], // Intentionally empty, will be updated later.
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f66a1"),
     name: "Mobile App Development",
-    description:
-      "Development of iOS and Android mobile applications for customer engagement",
+    description: "Development of iOS and Android mobile applications.",
     status: "IN_PROGRESS",
     priority: "MEDIUM",
-    ownerId: String(userIdMap["john_doe"]),
-    managerIds: [String(userIdMap["john_doe"])],
-    memberIds: [
-      String(userIdMap["jane_smith"]),
-      String(userIdMap["mike_wilson"]),
-    ],
-    startDate: new Date("2024-04-01T00:00:00Z"),
-    endDate: new Date("2024-08-31T00:00:00Z"),
-    assignedTo: [String(userIdMap["jane_smith"])],
+    ownerId: userIdMap["john_doe"],
+    managerIds: [userIdMap["john_doe"]],
+    memberIds: [userIdMap["jane_smith"], userIdMap["mike_wilson"]],
+    createdBy: userIdMap["john_doe"],
     taskIds: [],
-    createdAt: new Date("2024-03-01T00:00:00Z"),
-    updatedAt: new Date("2024-03-01T00:00:00Z"),
-    createdBy: String(userIdMap["john_doe"]),
-    lastModifiedBy: String(userIdMap["john_doe"]),
-    version: NumberLong(1),
+    version: 0,
   },
   {
+    _id: ObjectId("685cccd043a91a99a02f66a2"),
     name: "Data Analytics Dashboard",
-    description:
-      "Implementation of real-time analytics dashboard for business intelligence",
+    description: "Implementation of real-time analytics dashboard.",
     status: "COMPLETED",
     priority: "LOW",
-    ownerId: String(userIdMap["john_doe"]),
-    managerIds: [String(userIdMap["john_doe"])],
-    memberIds: [
-      String(userIdMap["mike_wilson"]),
-      String(userIdMap["sarah_brown"]),
-    ],
-    startDate: new Date("2024-01-01T00:00:00Z"),
-    endDate: new Date("2024-02-29T00:00:00Z"),
-    assignedTo: [String(userIdMap["mike_wilson"])],
+    ownerId: userIdMap["john_doe"],
+    managerIds: [userIdMap["john_doe"]],
+    memberIds: [userIdMap["mike_wilson"], userIdMap["sarah_brown"]],
+    createdBy: userIdMap["john_doe"],
     taskIds: [],
-    createdAt: new Date("2023-12-15T00:00:00Z"),
-    updatedAt: new Date("2024-02-29T00:00:00Z"),
-    createdBy: String(userIdMap["john_doe"]),
-    lastModifiedBy: String(userIdMap["mike_wilson"]),
-    version: NumberLong(3),
+    version: 0,
   },
 ];
-const projectInsertResult = db.projects.insertMany(projects);
+db.projects.insertMany(projects);
+
 const projectIdMap = {};
-projects.forEach((p, i) => {
-  projectIdMap[p.name] = projectInsertResult.insertedIds[i];
+projects.forEach((p) => {
+  projectIdMap[p.name] = p._id.valueOf();
 });
-print("Sample projects inserted successfully into projectdb!");
+print("✅ Step 2: Sample projects inserted successfully.");
 
 // =======================================
-// INSERT SAMPLE TASKS (taskdb)
+//  Step 3: Insert Tasks
 // =======================================
 db = db.getSiblingDB("taskdb");
+db.tasks.drop(); // Optional: Clean slate
+
 const tasks = [
+  // Tasks for E-Commerce Project
   {
-    projectId: String(projectIdMap["E-Commerce Platform Redesign"]),
+    _id: ObjectId("685cccd043a91a99a02f66a3"),
+    projectId: projectIdMap["E-Commerce Platform Redesign"].valueOf(),
     name: "Design new homepage layout",
     status: "IN_PROGRESS",
     priority: "HIGH",
-    description:
-      "Create mockups and wireframes for the new homepage design with responsive layout",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["jane_smith"]),
-    createdAt: new Date("2024-03-05T00:00:00Z"),
-    updatedAt: new Date("2024-11-25T00:00:00Z"),
-    dueDate: new Date("2024-12-15T00:00:00Z"),
-    assigneeId: String(userIdMap["jane_smith"]),
-    tags: ["design", "ui/ux", "responsive"],
-    attachments: [
-      {
-        id: "att-001",
-        filename: "homepage_mockup.figma",
-        originalName: "Homepage Mockup.figma",
-        contentType: "application/figma",
-        size: NumberLong(2048576),
-        uploadedBy: String(userIdMap["jane_smith"]),
-        uploadedAt: new Date("2024-11-20T00:00:00Z"),
-        url: "https://storage.company.com/attachments/homepage_mockup.figma",
-      },
-    ],
-    version: NumberLong(2),
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["jane_smith"],
+    version: 0,
   },
   {
-    projectId: String(projectIdMap["E-Commerce Platform Redesign"]),
+    _id: ObjectId("685cccd043a91a99a02f66a4"),
+    projectId: projectIdMap["E-Commerce Platform Redesign"].valueOf(),
     name: "Implement user authentication",
     status: "TODO",
-    priority: "CRITICAL",
-    description:
-      "Implement secure user authentication with JWT tokens and password hashing",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["john_doe"]),
-    createdAt: new Date("2024-03-10T00:00:00Z"),
-    updatedAt: new Date("2024-03-10T00:00:00Z"),
-    dueDate: new Date("2024-12-20T00:00:00Z"),
-    assigneeId: String(userIdMap["mike_wilson"]),
-    tags: ["backend", "security", "authentication"],
-    attachments: [],
-    version: NumberLong(1),
+    priority: "URGENT",
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["mike_wilson"],
+    version: 0,
   },
   {
-    projectId: String(projectIdMap["E-Commerce Platform Redesign"]),
+    _id: ObjectId("685cccd043a91a99a02f66a5"),
+    projectId: projectIdMap["E-Commerce Platform Redesign"].valueOf(),
     name: "Setup CI/CD pipeline",
     status: "DONE",
     priority: "MEDIUM",
-    description:
-      "Configure automated testing and deployment pipeline using GitHub Actions",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["mike_wilson"]),
-    createdAt: new Date("2024-03-01T00:00:00Z"),
-    updatedAt: new Date("2024-11-15T00:00:00Z"),
-    dueDate: new Date("2024-11-30T00:00:00Z"),
-    assigneeId: String(userIdMap["mike_wilson"]),
-    tags: ["devops", "ci/cd", "automation"],
-    attachments: [],
-    version: NumberLong(3),
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["mike_wilson"],
+    version: 0,
   },
+  // Tasks for Mobile App Project
   {
-    projectId: String(projectIdMap["Mobile App Development"]),
+    _id: ObjectId("685cccd043a91a99a02f66a6"),
+    projectId: projectIdMap["Mobile App Development"].valueOf(),
     name: "Research mobile frameworks",
-    status: "REVIEW",
+    status: "IN_PROGRESS",
     priority: "HIGH",
-    description:
-      "Evaluate React Native vs Flutter for cross-platform mobile development",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["jane_smith"]),
-    createdAt: new Date("2024-03-15T00:00:00Z"),
-    updatedAt: new Date("2024-11-28T00:00:00Z"),
-    dueDate: new Date("2024-12-10T00:00:00Z"),
-    assigneeId: String(userIdMap["jane_smith"]),
-    tags: ["research", "mobile", "framework"],
-    attachments: [
-      {
-        id: "att-002",
-        filename: "framework_comparison.pdf",
-        originalName: "Mobile Framework Comparison.pdf",
-        contentType: "application/pdf",
-        size: NumberLong(1024768),
-        uploadedBy: String(userIdMap["jane_smith"]),
-        uploadedAt: new Date("2024-11-28T00:00:00Z"),
-        url: "https://storage.company.com/attachments/framework_comparison.pdf",
-      },
-    ],
-    version: NumberLong(2),
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["jane_smith"],
+    version: 0,
   },
   {
-    projectId: String(projectIdMap["Mobile App Development"]),
+    _id: ObjectId("685cccd043a91a99a02f66a7"),
+    projectId: projectIdMap["Mobile App Development"].valueOf(),
     name: "Create app wireframes",
     status: "BLOCKED",
     priority: "MEDIUM",
-    description:
-      "Design wireframes for key app screens - waiting for UX research completion",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["jane_smith"]),
-    createdAt: new Date("2024-03-20T00:00:00Z"),
-    updatedAt: new Date("2024-11-20T00:00:00Z"),
-    dueDate: new Date("2024-12-25T00:00:00Z"),
-    assigneeId: String(userIdMap["jane_smith"]),
-    tags: ["design", "wireframes", "mobile"],
-    attachments: [],
-    version: NumberLong(1),
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["jane_smith"],
+    version: 0,
   },
+  // Task for Analytics Project
   {
-    projectId: String(projectIdMap["Data Analytics Dashboard"]),
+    _id: ObjectId("685cccd043a91a99a02f66a8"),
+    projectId: projectIdMap["Data Analytics Dashboard"].valueOf(),
     name: "Implement dashboard charts",
     status: "DONE",
     priority: "HIGH",
-    description:
-      "Create interactive charts using Chart.js for the analytics dashboard",
-    createdBy: String(userIdMap["john_doe"]),
-    updatedBy: String(userIdMap["mike_wilson"]),
-    createdAt: new Date("2024-01-15T00:00:00Z"),
-    updatedAt: new Date("2024-02-20T00:00:00Z"),
-    dueDate: new Date("2024-02-25T00:00:00Z"),
-    assigneeId: String(userIdMap["mike_wilson"]),
-    tags: ["frontend", "charts", "analytics"],
-    attachments: [],
-    version: NumberLong(4),
+    createdBy: userIdMap["john_doe"],
+    assigneeId: userIdMap["mike_wilson"],
+    version: 0,
   },
 ];
-const taskInsertResult = db.tasks.insertMany(tasks);
+db.tasks.insertMany(tasks);
+
 const taskIdMap = {};
-tasks.forEach((t, i) => {
-  taskIdMap[t.name] = taskInsertResult.insertedIds[i];
+tasks.forEach((t) => {
+  taskIdMap[t.name] = t._id.valueOf();
 });
-print("Sample tasks inserted successfully into taskdb!");
-
-// Update project taskIds
-// (This step is necessary because task ObjectIds are only known after insertion)
-db = db.getSiblingDB("projectdb");
-projects[0].taskIds = [
-  String(taskIdMap["Design new homepage layout"]),
-  String(taskIdMap["Implement user authentication"]),
-  String(taskIdMap["Setup CI/CD pipeline"]),
-];
-projects[1].taskIds = [
-  String(taskIdMap["Research mobile frameworks"]),
-  String(taskIdMap["Create app wireframes"]),
-];
-projects[2].taskIds = [String(taskIdMap["Implement dashboard charts"])];
-
-// Update in DB
-db.projects.updateOne(
-  { _id: projectIdMap["E-Commerce Platform Redesign"] },
-  { $set: { taskIds: projects[0].taskIds } }
-);
-db.projects.updateOne(
-  { _id: projectIdMap["Mobile App Development"] },
-  { $set: { taskIds: projects[1].taskIds } }
-);
-db.projects.updateOne(
-  { _id: projectIdMap["Data Analytics Dashboard"] },
-  { $set: { taskIds: projects[2].taskIds } }
-);
+print("✅ Step 3: Sample tasks inserted successfully.");
 
 // =======================================
-// INSERT SAMPLE COMMENTS (commentdb)
+//  Step 4: Insert Comments
 // =======================================
 db = db.getSiblingDB("commentdb");
+db.comments.drop(); // Optional: Clean slate
+
 const comments = [
+  // Comment on a Task
   {
-    parentId: String(taskIdMap["Design new homepage layout"]),
+    _id: ObjectId("685cccd043a91a99a02f66b0"),
+    parentId: taskIdMap["Design new homepage layout"].valueOf(),
     parentType: "TASK",
-    content:
-      "I've completed the initial wireframes. Please review and provide feedback.",
-    userId: String(userIdMap["jane_smith"]),
-    displayName: "Jane Smith",
-    createdAt: new Date("2024-11-20T10:30:00Z"),
-    updatedAt: new Date("2024-11-20T10:30:00Z"),
-    version: NumberLong(1),
-    deleted: false,
+    content: "I've completed the initial wireframes. Please review.",
+    userId: userIdMap["jane_smith"],
+    version: 0,
   },
+  // Reply to the above comment
   {
-    parentId: String(taskIdMap["Design new homepage layout"]),
+    _id: ObjectId("685cccd043a91a99a02f66b1"),
+    parentId: taskIdMap["Design new homepage layout"].valueOf(),
     parentType: "TASK",
-    content:
-      "Great work! The design looks modern and clean. Can you add a dark mode variant?",
-    userId: String(userIdMap["john_doe"]),
-    displayName: "John Doe",
-    createdAt: new Date("2024-11-21T14:15:00Z"),
-    updatedAt: new Date("2024-11-21T14:15:00Z"),
-    // parentCommentId will be set after insert
-    version: NumberLong(1),
-    deleted: false,
+    content: "Great work! Can you add a dark mode variant?",
+    userId: userIdMap["john_doe"],
+    parentCommentId: "685cccd043a91a99a02f66b0",
+    version: 0,
   },
+  // Comment directly on a Project
   {
-    parentId: String(projectIdMap["E-Commerce Platform Redesign"]),
+    _id: ObjectId("685cccd043a91a99a02f66b2"),
+    parentId: projectIdMap["E-Commerce Platform Redesign"].valueOf(),
     parentType: "PROJECT",
-    content:
-      "Project is progressing well. We're on track to meet the Q2 deadline.",
-    userId: String(userIdMap["john_doe"]),
-    displayName: "John Doe",
-    createdAt: new Date("2024-11-25T09:00:00Z"),
-    updatedAt: new Date("2024-11-25T09:00:00Z"),
-    version: NumberLong(1),
-    deleted: false,
-  },
-  {
-    parentId: String(taskIdMap["Research mobile frameworks"]),
-    parentType: "TASK",
-    content:
-      "After thorough research, I recommend React Native for better performance and team expertise.",
-    userId: String(userIdMap["jane_smith"]),
-    displayName: "Jane Smith",
-    createdAt: new Date("2024-11-28T16:45:00Z"),
-    updatedAt: new Date("2024-11-28T16:45:00Z"),
-    version: NumberLong(1),
-    deleted: false,
-  },
-  {
-    parentId: String(taskIdMap["Create app wireframes"]),
-    parentType: "TASK",
-    content:
-      "This task is blocked until we get the UX research results from the external agency.",
-    userId: String(userIdMap["jane_smith"]),
-    displayName: "Jane Smith",
-    createdAt: new Date("2024-11-20T11:20:00Z"),
-    updatedAt: new Date("2024-11-20T11:20:00Z"),
-    version: NumberLong(1),
-    deleted: false,
+    content: "Project is progressing well.",
+    userId: userIdMap["john_doe"],
+    version: 0,
   },
 ];
-const commentInsertResult = db.comments.insertMany(comments);
-const commentIdMap = {};
-comments.forEach((c, i) => {
-  commentIdMap[c.content] = commentInsertResult.insertedIds[i];
-});
-// Update parentCommentId for reply comment
-const replyCommentContent =
-  "Great work! The design looks modern and clean. Can you add a dark mode variant?";
-db.comments.updateOne(
-  { _id: commentIdMap[replyCommentContent] },
-  {
-    $set: {
-      parentCommentId: String(
-        commentIdMap[
-          "I've completed the initial wireframes. Please review and provide feedback."
-        ]
-      ),
-    },
-  }
-);
-print("Sample comments inserted successfully into commentdb!");
+db.comments.insertMany(comments);
+print("✅ Step 4: Sample comments inserted successfully.");
 
 // =======================================
-// INSERT SAMPLE NOTIFICATIONS (notificationdb)
+//  Step 5: Link Tasks back to Projects
+// =======================================
+db = db.getSiblingDB("projectdb");
+
+// For each project, find all tasks that reference it and update its taskIds array.
+// This is a more robust method than updating one by one.
+for (const projectName in projectIdMap) {
+  const projId = projectIdMap[projectName];
+
+  // Find all tasks for the current project
+  const tasksForProject = db
+    .getSiblingDB("taskdb")
+    .tasks.find({ projectId: projId.valueOf() })
+    .toArray();
+  const taskIdsForProject = tasksForProject.map((task) => task._id.valueOf());
+
+  if (taskIdsForProject.length > 0) {
+    db.projects.updateOne(
+      { _id: ObjectId(projId) },
+      { $set: { taskIds: taskIdsForProject } }
+    );
+    print(
+      `   -> Linked ${taskIdsForProject.length} tasks to project '${projectName}'.`
+    );
+  }
+}
+print("✅ Step 5: Project-to-Task links established.");
+
+// =======================================
+//  Step 6: Insert Notifications (Now that all entities exist)
 // =======================================
 db = db.getSiblingDB("notificationdb");
+db.notifications.drop(); // Optional: Clean slate
+
 const notifications = [
   {
-    recipientUserId: String(userIdMap["jane_smith"]),
     eventType: "TASK_ASSIGNED",
-    message: "You have been assigned to task: Design new homepage layout",
+    recipientUserId: userIdMap["jane_smith"].valueOf(),
+    message: "You were assigned to: Design new homepage layout",
     entityType: "TASK",
-    entityId: String(taskIdMap["Design new homepage layout"]),
-    channel: "IN_APP",
-    createdAt: new Date("2024-03-05T00:00:00Z"),
-    isRead: true,
-    timestamp: new Date("2024-03-05T00:00:00Z"),
-    payload: {
-      taskName: "Design new homepage layout",
-      projectName: "E-Commerce Platform Redesign",
-      assignedBy: "John Doe",
-    },
-    version: NumberLong(1),
+    entityId: taskIdMap["Design new homepage layout"].valueOf(),
+    version: 0,
   },
   {
-    recipientUserId: String(userIdMap["mike_wilson"]),
-    eventType: "TASK_ASSIGNED",
-    message: "You have been assigned to task: Implement user authentication",
-    entityType: "TASK",
-    entityId: String(taskIdMap["Implement user authentication"]),
-    channel: "EMAIL",
-    createdAt: new Date("2024-03-10T00:00:00Z"),
-    isRead: false,
-    timestamp: new Date("2024-03-10T00:00:00Z"),
-    payload: {
-      taskName: "Implement user authentication",
-      projectName: "E-Commerce Platform Redesign",
-      assignedBy: "John Doe",
-    },
-    version: NumberLong(1),
-  },
-  {
-    recipientUserId: String(userIdMap["john_doe"]),
     eventType: "TASK_COMPLETED",
+    recipientUserId: userIdMap["john_doe"].valueOf(),
     message: "Task completed: Setup CI/CD pipeline",
     entityType: "TASK",
-    entityId: String(taskIdMap["Setup CI/CD pipeline"]),
-    channel: "IN_APP",
-    createdAt: new Date("2024-11-15T00:00:00Z"),
-    isRead: true,
-    timestamp: new Date("2024-11-15T00:00:00Z"),
-    payload: {
-      taskName: "Setup CI/CD pipeline",
-      projectName: "E-Commerce Platform Redesign",
-      completedBy: "Mike Wilson",
-    },
-    version: NumberLong(1),
+    entityId: taskIdMap["Setup CI/CD pipeline"].valueOf(),
+    version: 0,
   },
   {
-    recipientUserId: String(userIdMap["mike_wilson"]),
-    eventType: "DEADLINE_APPROACHING",
-    message:
-      "Task deadline approaching: Implement user authentication (Due: Dec 20, 2024)",
-    entityType: "TASK",
-    entityId: String(taskIdMap["Implement user authentication"]),
-    channel: "PUSH",
-    createdAt: new Date("2024-12-01T08:00:00Z"),
-    isRead: false,
-    timestamp: new Date("2024-12-01T08:00:00Z"),
-    payload: {
-      taskName: "Implement user authentication",
-      dueDate: "2024-12-20T00:00:00Z",
-      daysRemaining: 19,
-    },
-    version: NumberLong(1),
-  },
-  {
-    recipientUserId: String(userIdMap["john_doe"]),
     eventType: "COMMENT_ADDED",
-    message: "New comment added to task: Design new homepage layout",
-    entityType: "TASK",
-    entityId: String(taskIdMap["Design new homepage layout"]),
-    channel: "IN_APP",
-    createdAt: new Date("2024-11-20T10:30:00Z"),
-    isRead: true,
-    timestamp: new Date("2024-11-20T10:30:00Z"),
-    payload: {
-      taskName: "Design new homepage layout",
-      commentBy: "Jane Smith",
-      commentPreview: "I've completed the initial wireframes...",
-    },
-    version: NumberLong(1),
+    recipientUserId: userIdMap["jane_smith"].valueOf(),
+    message: "John Doe commented on your project: E-Commerce Platform Redesign",
+    entityType: "PROJECT",
+    entityId: projectIdMap["E-Commerce Platform Redesign"].valueOf(),
+    version: 0,
   },
 ];
 db.notifications.insertMany(notifications);
-print("Sample notifications inserted successfully into notificationdb!");
+print("✅ Step 6: Sample notifications inserted successfully.");
 
+// =======================================
+//  Final Verification
+// =======================================
 print("\n=== Data Insertion Summary ===");
-// Count documents in each database
-db = db.getSiblingDB("userdb");
-const userCount = db.users.count();
-db = db.getSiblingDB("projectdb");
-const projectCount = db.projects.count();
-db = db.getSiblingDB("taskdb");
-const taskCount = db.tasks.count();
-db = db.getSiblingDB("commentdb");
-const commentCount = db.comments.count();
-db = db.getSiblingDB("notificationdb");
-const notificationCount = db.notifications.count();
-print("Users inserted (userdb): " + userCount);
-print("Projects inserted (projectdb): " + projectCount);
-print("Tasks inserted (taskdb): " + taskCount);
-print("Comments inserted (commentdb): " + commentCount);
-print("Notifications inserted (notificationdb): " + notificationCount);
+const userCount = db.getSiblingDB("userdb").users.countDocuments({});
+const projectCount = db.getSiblingDB("projectdb").projects.countDocuments({});
+const taskCount = db.getSiblingDB("taskdb").tasks.countDocuments({});
+const commentCount = db.getSiblingDB("commentdb").comments.countDocuments({});
+const notificationCount = db
+  .getSiblingDB("notificationdb")
+  .notifications.countDocuments({});
 
-print("\n=== Microservices Database Distribution Complete ===");
-print("✓ userdb - Contains user data for user-service");
-print("✓ projectdb - Contains project data for project-service");
-print("✓ taskdb - Contains task data for task-service");
-print("✓ commentdb - Contains comment data for comment-service");
-print("✓ notificationdb - Contains notification data for notification-service");
-print(
-  "\nSample data insertion completed successfully with proper microservices isolation!"
-);
+print(`- Users: ${userCount}`);
+print(`- Projects: ${projectCount}`);
+print(`- Tasks: ${taskCount}`);
+print(`- Comments: ${commentCount}`);
+print(`- Notifications: ${notificationCount}`);
+
+print("\n🎉 Sample data insertion and linking completed successfully! 🎉");

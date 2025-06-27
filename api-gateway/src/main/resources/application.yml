@@ -68,7 +68,7 @@ spring:
 
 # JWT disabled by default for easier development
 jwt:
-  enabled: false
+  enabled: true
   secret: my-very-secret-key-for-jwt-signing
 
 logging:

@@ -26,6 +26,7 @@ import reactor.core.publisher.Mono;
 
 @Service
 public class CommentService {
+
     private static final Logger log = LoggerFactory.getLogger(CommentService.class);
 
     private final CommentRepository commentRepository;
@@ -34,9 +35,9 @@ public class CommentService {
     private final String serviceName;
 
     public CommentService(CommentRepository commentRepository,
-                         ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaProducerTemplate,
-                         @Value("${kafka.topic.comment-events}") String commentEventsTopic,
-                         @Value("${spring.application.name}") String serviceName) {
+            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaProducerTemplate,
+            @Value("${kafka.topic.comment-events}") String commentEventsTopic,
+            @Value("${spring.application.name}") String serviceName) {
         this.commentRepository = commentRepository;
         this.kafkaProducerTemplate = kafkaProducerTemplate;
         this.commentEventsTopic = commentEventsTopic;
@@ -91,7 +92,7 @@ public class CommentService {
         return commentRepository.save(comment)
                 .map(CommentUtils::entityToDto)
                 .flatMap(savedDto -> publishCommentCreatedEvent(savedDto, correlationId)
-                        .thenReturn(savedDto))
+                .thenReturn(savedDto))
                 .doOnError(e -> log.error("Error creating comment", e))
                 .onErrorResume(e -> Mono.error(new RuntimeException("Failed to create comment", e)))
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in createComment, skipping element", throwable));
@@ -116,7 +117,7 @@ public class CommentService {
                     return commentRepository.save(reply)
                             .map(CommentUtils::entityToDto)
                             .flatMap(savedDto -> publishCommentCreatedEvent(savedDto, correlationId)
-                                    .thenReturn(savedDto));
+                            .thenReturn(savedDto));
                 })
                 .doOnError(e -> log.error("Error creating reply", e))
                 .onErrorResume(e -> Mono.error(new RuntimeException("Failed to create reply", e)))
@@ -163,16 +164,30 @@ public class CommentService {
     }
 
     public Mono<Void> deleteComment(String commentId, String correlationId) {
+        if (!StringUtils.hasText(commentId)) {
+            return Mono.error(new IllegalArgumentException("Comment ID must be provided"));
+        }
+
         return commentRepository.findById(commentId)
-                .switchIfEmpty(Mono.error(new IllegalArgumentException("Comment not found")))
+                .switchIfEmpty(Mono.error(new IllegalArgumentException("Comment not found with ID: " + commentId)))
                 .flatMap(comment -> {
+                    // Create DTO before deletion for the event
+                    CommentDto commentDto = CommentUtils.entityToDto(comment);
+
+                    // Delete all replies first (recursive deletion)
                     return commentRepository.findByParentIdAndParentTypeOrderByCreatedAtAsc(commentId, ParentType.COMMENT)
                             .flatMap(reply -> deleteComment(reply.getId(), correlationId))
                             .then(commentRepository.delete(comment))
-                            .then(publishCommentDeletedEvent(CommentUtils.entityToDto(comment), correlationId));
+                            .then(publishCommentDeletedEvent(commentDto, correlationId))
+                            .doOnSuccess(v -> log.info("Successfully deleted comment with ID: {}. CorrID: {}", commentId, correlationId));
                 })
-                .doOnError(e -> log.error("Error deleting comment", e))
-                .onErrorResume(e -> Mono.error(new RuntimeException("Failed to delete comment", e)))
+                .doOnError(e -> log.error("Error deleting comment with ID: {}. CorrID: {}", commentId, correlationId, e))
+                .onErrorResume(e -> {
+                    if (e instanceof IllegalArgumentException) {
+                        return Mono.error(e); // Re-throw validation errors
+                    }
+                    return Mono.error(new RuntimeException("Failed to delete comment", e));
+                })
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in deleteComment, skipping element", throwable));
     }
 
@@ -213,5 +228,65 @@ public class CommentService {
                     return Mono.empty();
                 })
                 .then();
+    }
+
+    // ==============================
+    // Read operations
+    // ==============================
+    public Mono<CommentDto> getCommentById(String commentId) {
+        return commentRepository.findById(commentId)
+                .map(CommentUtils::entityToDto)
+                .doOnError(e -> log.error("Error fetching comment by ID: {}", commentId, e))
+                .switchIfEmpty(Mono.error(new RuntimeException("Comment not found: " + commentId)))
+                .onErrorResume(e -> Mono.error(new RuntimeException("Failed to fetch comment by id", e)))
+                .onErrorContinue((throwable, o) -> log.error("Unhandled error in getCommentById, skipping element", throwable));
+    }
+
+    // ==============================
+    // Permission checking operations
+    // ==============================
+    public Mono<Boolean> hasCommentAccess(org.springframework.security.core.Authentication authentication, CommentDto comment, String action) {
+        return Mono.fromCallable(() -> {
+            if (authentication == null || !authentication.isAuthenticated() || action == null) {
+                return false;
+            }
+
+            String currentUserId = getCurrentUserId(authentication);
+
+            try {
+                boolean isAuthor = currentUserId != null && currentUserId.equals(comment.getAuthorId());
+
+                // Basic permission checks based on action
+                switch (action.toUpperCase()) {
+                    case "CMT_READ":
+                        // Anyone who can access the parent resource can read comments
+                        return true; // Could add more sophisticated checks here
+                    case "CMT_UPDATE":
+                    case "CMT_EDIT":
+                        return isAuthor || hasAdminRole(authentication);
+                    case "CMT_DELETE":
+                        return isAuthor || hasAdminRole(authentication);
+                    case "CMT_REPLY":
+                        return true; // Could add more sophisticated checks here
+                    default:
+                        return false;
+                }
+            } catch (Exception e) {
+                log.error("Error checking comment access for user {} on comment {}", currentUserId, comment.getId(), e);
+                return false;
+            }
+        });
+    }
+
+    private String getCurrentUserId(org.springframework.security.core.Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() != null) {
+            return authentication.getName(); // or extract from principal based on your auth setup
+        }
+        return null;
+    }
+
+    private boolean hasAdminRole(org.springframework.security.core.Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
     }
 }

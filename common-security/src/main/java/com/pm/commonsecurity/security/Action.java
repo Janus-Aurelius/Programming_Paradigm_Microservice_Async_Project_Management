@@ -26,9 +26,14 @@ public enum Action {    // ─── User service ──────────
 
     // ─── Comment service ───────────────────────────────────────────
     CMT_CREATE,            // post a new comment
+    CMT_READ,              // read comments (project/task viewers)
+    CMT_UPDATE,            // update comment (generic alias)
+    CMT_EDIT,              // alternative alias for update
     CMT_UPDATE_OWN,        // edit your own comment
+    CMT_DELETE,            // delete comment (generic alias)
     CMT_DELETE_OWN,        // delete your own comment
     CMT_DELETE_ANY,        // delete any comment (moderator)
+    CMT_REPLY,             // reply to comment
 
     // ─── Notification service ──────────────────────────────────────
     NOTI_SEND,             // emit a notification (system only)

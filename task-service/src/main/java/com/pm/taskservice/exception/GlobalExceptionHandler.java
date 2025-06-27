@@ -1,17 +1,20 @@
 package com.pm.taskservice.exception;
 
-import com.pm.taskservice.dto.ErrorResponse; // Import your ErrorResponse DTO
-import lombok.extern.slf4j.Slf4j;
+import java.util.List; // Import your ErrorResponse DTO
+import java.util.stream.Collectors;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebExchange; // To get request path
-import reactor.core.publisher.Mono;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import com.pm.taskservice.dto.ErrorResponse;
+
+import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Mono;
 
 @RestControllerAdvice // Handles exceptions globally for all @RestController classes
 @Slf4j
@@ -65,10 +68,22 @@ public class GlobalExceptionHandler {
                 .body(errorResponse));
     }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleAccessDeniedException(
+            AccessDeniedException ex, ServerWebExchange exchange) {
+        log.warn("Access denied: {}", ex.getMessage());
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                ex.getMessage(),
+                exchange.getRequest().getPath().value()
+        );
+        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse));
+    }
+
     // Add handlers for other specific custom exceptions here
     // @ExceptionHandler(YourBusinessRuleException.class)
     // public Mono<ResponseEntity<ErrorResponse>> handleBusinessRuleException(...) { ... }
-
     @ExceptionHandler(Exception.class) // Generic fallback handler
     public Mono<ResponseEntity<ErrorResponse>> handleGenericException(
             Exception ex, ServerWebExchange exchange) {
