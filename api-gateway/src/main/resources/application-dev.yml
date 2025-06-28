@@ -68,7 +68,7 @@ management:
 
 # Development mode - JWT disabled
 jwt:
-  enabled: false
+  enabled: true
   secret: my-very-secret-key-for-jwt-signing
 
 # Development mode security configuration

@@ -12,6 +12,8 @@ services:
     url: http://project-service:8082
   comment-service:
     url: http://comment-service:8088
+  api-gateway:
+    url: http://api-gateway:8080
 
 spring:
   application:
@@ -31,17 +33,26 @@ spring:
         spring.json.add.type.headers: true # Ensure type info is included in headers
         spring.json.type.mapping: eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope # Type mapping alias
     consumer:
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer  # Deserializes message keys
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # Deserializes message values
-      group-id: project-service-group  # Consumer group for load balancing
-      auto-offset-reset: earliest  # Start from earliest message if no offset is present
-      enable-auto-commit: true  # Automatically commit offsets (set false for manual control)
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer # Deserializes message keys
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer # Deserializes message values
+      group-id: project-service-group # Consumer group for load balancing
+      auto-offset-reset: earliest # Start from earliest message if no offset is present
+      enable-auto-commit: true # Automatically commit offsets (set false for manual control)
       properties:
-        spring.json.trusted.packages: " com.pm.commoncontracts.*"
+        spring.json.trusted.packages: "com.pm.commoncontracts.*" # Fixed: Removed leading space
 
 kafka:
   topic:
     project-events: project-events
+
+# Security configuration
+security:
+  devMode: false
+
+# JWT configuration for header-based authentication
+jwt:
+  enabled: true
+  secret: my-very-secret-key-for-jwt-signing
 
 logging:
   level:
@@ -71,7 +82,6 @@ spring:
       uri: mongodb://mongo:27017/projectdb
   kafka:
     bootstrap-servers: kafka:9092
-
 ---
 spring:
   config:
@@ -82,4 +92,3 @@ spring:
       uri: mongodb://localhost:27017/projectdb
   kafka:
     bootstrap-servers: localhost:9092
-

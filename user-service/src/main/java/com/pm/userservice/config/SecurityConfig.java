@@ -8,9 +8,7 @@ import org.springframework.security.access.expression.method.MethodSecurityExpre
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.security.web.server.context.ServerSecurityContextRepository;
 
 import com.pm.userservice.security.UserPermissionEvaluator;
 
@@ -20,9 +18,9 @@ import com.pm.userservice.security.UserPermissionEvaluator;
 @ConditionalOnProperty(name = "jwt.enabled", havingValue = "true", matchIfMissing = false)
 public class SecurityConfig {
 
-    private final ServerSecurityContextRepository securityContextRepository;
+    private final HeaderBasedSecurityContextRepository securityContextRepository;
 
-    public SecurityConfig(ServerSecurityContextRepository securityContextRepository) {
+    public SecurityConfig(HeaderBasedSecurityContextRepository securityContextRepository) {
         this.securityContextRepository = securityContextRepository;
     }
 

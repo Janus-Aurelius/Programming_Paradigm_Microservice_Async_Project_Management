@@ -56,10 +56,16 @@ public class ProjectUtils {
                 .managerIds(dto.getManagerIds())
                 .memberIds(dto.getMemberIds())
                 .assignedTo(dto.getAssignedTo()) // Map assignedTo field
-                .taskIds(dto.getTaskIds()) // Map taskIds field
-                .createdBy(dto.getCreatedBy())
-                .lastModifiedBy(dto.getLastModifiedBy())
-                .version(dto.getVersion());
+                .taskIds(dto.getTaskIds()); // Map taskIds field
+
+        // Only set version and auditing fields for existing entities (updates)
+        if (dto.getId() != null) {
+            builder.version(dto.getVersion())
+                    .createdBy(dto.getCreatedBy())
+                    .lastModifiedBy(dto.getLastModifiedBy());
+        }
+        // For new entities, let Spring Data auditing handle createdBy, lastModifiedBy, and version
+
         // Convert String dates to Instant for entity
         builder.startDate(dto.getStartDate() != null ? java.time.Instant.parse(dto.getStartDate()) : null);
         builder.endDate(dto.getEndDate() != null ? java.time.Instant.parse(dto.getEndDate()) : null);

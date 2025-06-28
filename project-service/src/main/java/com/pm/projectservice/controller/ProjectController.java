@@ -61,6 +61,10 @@ public class ProjectController {
                     if (hasAccess) {
                         String userId = extractUserIdFromHeader(request);
                         projectDto.setCreatedBy(userId);
+                        // Set the ownerId to the current user if not already set
+                        if (projectDto.getOwnerId() == null || projectDto.getOwnerId().isEmpty()) {
+                            projectDto.setOwnerId(userId);
+                        }
                         return projectService.createProject(projectDto)
                                 .map(createdProject -> {
                                     URI location = uriBuilder.path("/projects/{id}")
@@ -181,6 +185,7 @@ public class ProjectController {
             @PathVariable String projectId,
             @Valid @RequestBody TaskDto taskDto,
             UriComponentsBuilder uriBuilder,
+            ServerHttpRequest request,
             Authentication authentication
     ) {
         log.info("Received request to create a task for project {}: {}", projectId, taskDto);
@@ -188,7 +193,7 @@ public class ProjectController {
         return permissionEvaluator.hasPermission(authentication, projectId, "TASK_CREATE")
                 .flatMap(hasAccess -> {
                     if (hasAccess) {
-                        return projectService.createTaskForProject(projectId, taskDto)
+                        return projectService.createTaskForProject(projectId, taskDto, request)
                                 .map(createdTask -> {
                                     URI location = uriBuilder.path("/projects/{projectId}/tasks/{taskId}")
                                             .buildAndExpand(projectId, createdTask.getId())

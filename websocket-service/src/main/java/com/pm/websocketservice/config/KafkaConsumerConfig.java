@@ -25,15 +25,24 @@ public class KafkaConsumerConfig {
     }
 
     private ReceiverOptions<String, EventEnvelope<?>> createEventEnvelopeReceiverOptions(String topic) {
+        // Start with Spring Boot's auto-configured properties from application.yml
         Map<String, Object> props = kafkaProperties.buildConsumerProperties(null);
+
+        // Only override specific settings that we need for ReactiveKafka
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, org.apache.kafka.common.serialization.StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "com.pm.commoncontracts.envelope.EventEnvelope");
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "com.pm.commoncontracts.*");
-        // Use type headers for correct generic payload deserialization
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, true);
-        // Type mappings can help with deserialization of specific types
-        props.put(JsonDeserializer.TYPE_MAPPINGS, "eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope");
+
+        // These should already be set by application.yml, but ensure they're present
+        props.putIfAbsent(JsonDeserializer.VALUE_DEFAULT_TYPE, "com.pm.commoncontracts.envelope.EventEnvelope");
+        props.putIfAbsent(JsonDeserializer.TRUSTED_PACKAGES, "com.pm.commoncontracts.*");
+        props.putIfAbsent(JsonDeserializer.USE_TYPE_INFO_HEADERS, true);
+
+        // CRITICAL: Add type mappings to handle the notification service's type aliases
+        props.put(JsonDeserializer.TYPE_MAPPINGS,
+                "eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope,"
+                + "notificationToSendEventPayload:com.pm.commoncontracts.events.notification.NotificationToSendEventPayload"
+        );
+
         return ReceiverOptions.<String, EventEnvelope<?>>create(props)
                 .subscription(Collections.singleton(topic));
     }

@@ -9,23 +9,28 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class WebClientConfig {
 
-    @Value("${services.user-service.url}")
-    private String userServiceUrl;
+    @Value("${services.api-gateway.url:http://api-gateway:8080}")
+    private String apiGatewayUrl;
 
-    @Value("${services.task-service.url}")
-    private String taskServiceUrl;
+    private final ServiceTokenProvider serviceTokenProvider;
 
-    @Value("${services.project-service.url}")
-    private String projectServiceUrl;
-
-    @Value("${services.comment-service.url}")
-    private String commentServiceUrl;
+    public WebClientConfig(ServiceTokenProvider serviceTokenProvider) {
+        this.serviceTokenProvider = serviceTokenProvider;
+    }
 
     @Bean
     @Qualifier("userWebClient")
     public WebClient userWebClient() {
         return WebClient.builder()
-                .baseUrl(userServiceUrl)
+                .baseUrl(apiGatewayUrl + "/api/users")
+                .filter((request, next) -> {
+                    String token = serviceTokenProvider.createServiceToken();
+                    var modifiedRequest = org.springframework.web.reactive.function.client.ClientRequest
+                            .from(request)
+                            .header("X-Service-Token", token)
+                            .build();
+                    return next.exchange(modifiedRequest);
+                })
                 .build();
     }
 
@@ -33,7 +38,15 @@ public class WebClientConfig {
     @Qualifier("taskWebClient")
     public WebClient taskWebClient() {
         return WebClient.builder()
-                .baseUrl(taskServiceUrl)
+                .baseUrl(apiGatewayUrl + "/api/tasks")
+                .filter((request, next) -> {
+                    String token = serviceTokenProvider.createServiceToken();
+                    var modifiedRequest = org.springframework.web.reactive.function.client.ClientRequest
+                            .from(request)
+                            .header("X-Service-Token", token)
+                            .build();
+                    return next.exchange(modifiedRequest);
+                })
                 .build();
     }
 
@@ -41,7 +54,15 @@ public class WebClientConfig {
     @Qualifier("projectWebClient")
     public WebClient projectWebClient() {
         return WebClient.builder()
-                .baseUrl(projectServiceUrl)
+                .baseUrl(apiGatewayUrl + "/api/projects")
+                .filter((request, next) -> {
+                    String token = serviceTokenProvider.createServiceToken();
+                    var modifiedRequest = org.springframework.web.reactive.function.client.ClientRequest
+                            .from(request)
+                            .header("X-Service-Token", token)
+                            .build();
+                    return next.exchange(modifiedRequest);
+                })
                 .build();
     }
 
@@ -49,7 +70,15 @@ public class WebClientConfig {
     @Qualifier("commentWebClient")
     public WebClient commentWebClient() {
         return WebClient.builder()
-                .baseUrl(commentServiceUrl)
+                .baseUrl(apiGatewayUrl + "/api/comments")
+                .filter((request, next) -> {
+                    String token = serviceTokenProvider.createServiceToken();
+                    var modifiedRequest = org.springframework.web.reactive.function.client.ClientRequest
+                            .from(request)
+                            .header("X-Service-Token", token)
+                            .build();
+                    return next.exchange(modifiedRequest);
+                })
                 .build();
     }
 }

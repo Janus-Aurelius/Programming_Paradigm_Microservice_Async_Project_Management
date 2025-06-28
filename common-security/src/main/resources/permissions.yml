@@ -2,6 +2,7 @@
 rbac:
   roles:
     ROLE_USER:
+      - USER_READ
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
@@ -12,6 +13,7 @@ rbac:
       - NOTI_MARK_READ
 
     ROLE_DEVELOPER:
+      - USER_READ
       - USER_SELF_READ
       - USER_SELF_UPDATE
       - CMT_CREATE
@@ -30,6 +32,7 @@ rbac:
     ROLE_PROJECT_MANAGER:
       - USER_SELF_READ
       - USER_SELF_UPDATE
+      - USER_READ # Added for accessing user lists when creating projects
       - CMT_CREATE
       - CMT_READ
       - CMT_UPDATE_OWN

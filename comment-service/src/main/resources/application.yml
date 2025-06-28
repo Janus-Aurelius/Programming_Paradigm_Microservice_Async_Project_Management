@@ -45,6 +45,15 @@ kafka:
     comment-events: comment-events
     # project-events: project-events # Example if consuming project events
 
+# Security configuration
+security:
+  devMode: false
+
+# JWT configuration for header-based authentication
+jwt:
+  enabled: true
+  secret: my-very-secret-key-for-jwt-signing
+
 logging:
   level:
     root: INFO

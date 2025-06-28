@@ -2,10 +2,12 @@ package com.pm.projectservice.service;
 
 // Shared module imports
 import java.time.Instant;
+import java.util.ArrayList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate; // Import your event payload records
 import org.springframework.stereotype.Service; // Assuming this provides the context key
 import org.springframework.web.reactive.function.client.WebClient;
@@ -44,11 +46,11 @@ public class ProjectService {
     // Constructor injection
     public ProjectService(ProjectRepository projectRepository,
             ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
-            @Value("${services.task-service.url}") String taskServiceUrl) {
+            @Value("${services.api-gateway.url:http://api-gateway:8080}") String apiGatewayUrl) {
         this.projectRepository = projectRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.taskServiceWebClient = WebClient.builder()
-                .baseUrl(taskServiceUrl + "/api/tasks")
+                .baseUrl(apiGatewayUrl + "/api/tasks")
                 .build();
     }
 
@@ -115,7 +117,7 @@ public class ProjectService {
     // ==============================
     // Create a task for a specific project
     // ==============================
-    public Mono<TaskDto> createTaskForProject(String projectId, TaskDto taskDto) {
+    public Mono<TaskDto> createTaskForProject(String projectId, TaskDto taskDto, ServerHttpRequest request) {
         TaskDto taskToCreate = TaskDto.builder()
                 .id(taskDto.getId())
                 .name(taskDto.getName())
@@ -135,9 +137,27 @@ public class ProjectService {
                 .projectId(projectId)
                 .build();
 
-        // 1. Persist the task in the real task microservice
+        // 1. Persist the task in the real task microservice through API Gateway
         return taskServiceWebClient.post()
                 .uri("")
+                .headers(headers -> {
+                    // Forward authentication headers from the original request
+                    String authHeader = request.getHeaders().getFirst("Authorization");
+                    if (authHeader != null) {
+                        headers.set("Authorization", authHeader);
+                    }
+
+                    String userIdHeader = request.getHeaders().getFirst("X-User-Id");
+                    if (userIdHeader != null) {
+                        headers.set("X-User-Id", userIdHeader);
+                    }
+
+                    // Forward any other relevant headers
+                    String correlationId = request.getHeaders().getFirst("X-Correlation-ID");
+                    if (correlationId != null) {
+                        headers.set("X-Correlation-ID", correlationId);
+                    }
+                })
                 .bodyValue(taskToCreate)
                 .retrieve()
                 .bodyToMono(TaskDto.class)
@@ -146,7 +166,12 @@ public class ProjectService {
                 .flatMap(createdTask
                         -> // 2. Add the created task's ID to the project
                         projectRepository.findById(projectId)
+                        .switchIfEmpty(Mono.error(new RuntimeException("Project not found with ID: " + projectId)))
                         .flatMap(project -> {
+                            // Ensure taskIds list is not null
+                            if (project.getTaskIds() == null) {
+                                project.setTaskIds(new ArrayList<>());
+                            }
                             project.getTaskIds().add(createdTask.getId());
                             return projectRepository.save(project)
                                     .thenReturn(createdTask);

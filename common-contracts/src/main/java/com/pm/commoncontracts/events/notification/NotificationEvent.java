@@ -24,5 +24,6 @@ public enum NotificationEvent {
     //comment-related
     COMMENT_ADDED,
     COMMENT_EDITED,
-    COMMENT_DELETED
+    COMMENT_DELETED,
+    NOTIFICATION_READ
 }

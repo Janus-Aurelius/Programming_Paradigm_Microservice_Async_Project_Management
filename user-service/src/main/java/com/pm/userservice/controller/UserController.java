@@ -4,7 +4,6 @@ import java.net.URI;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -37,9 +37,6 @@ import reactor.core.publisher.Mono;
 @RequestMapping("")
 public class UserController {
 
-    @Value("${jwt.enabled:true}")
-    private boolean jwtEnabled;
-
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userService;
@@ -51,10 +48,24 @@ public class UserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasPermission(null, 'USER_READ')")
-    public Flux<UserDto> getAllUsers() {
-        log.info("Fetching all users");
-        return userService.getUsers();
+    @PreAuthorize("hasPermission(null, 'USER_READ') or hasRole('ROLE_ADMIN') or hasRole('ROLE_PROJECT_MANAGER')")
+    public Flux<UserDto> getAllUsers(
+            @RequestParam(required = false) String role,
+            @RequestParam(defaultValue = "50") int size) {
+        log.info("Fetching users with role: {} and size: {}", role, size);
+
+        if (role != null && !role.trim().isEmpty()) {
+            try {
+                UserRole userRole = UserRole.valueOf(role.trim());
+                return userService.getUsersByRole(userRole)
+                        .take(size);
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid role parameter: {}", role);
+                return Flux.empty();
+            }
+        }
+
+        return userService.getUsers().take(size);
     }
 
     @GetMapping("/{id}")

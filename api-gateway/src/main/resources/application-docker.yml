@@ -52,7 +52,7 @@ spring:
 
 # JWT disabled by default for Docker development
 jwt:
-  enabled: ${JWT_ENABLED:false}
+  enabled: ${JWT_ENABLED:true}
   secret: ${JWT_SECRET:my-very-secret-key-for-jwt-signing}
 
 logging:

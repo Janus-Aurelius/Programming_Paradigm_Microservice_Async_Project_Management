@@ -55,14 +55,27 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
-        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warn("Missing or invalid Authorization header for path: {}", path);
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
-        }
+        String token = null;
 
-        String token = authHeader.substring(7);
+        // Handle WebSocket authentication via query parameter
+        if (path.startsWith("/ws/")) {
+            token = request.getQueryParams().getFirst("token");
+            if (token == null || token.trim().isEmpty()) {
+                log.warn("Missing token query parameter for WebSocket path: {}", path);
+                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                return exchange.getResponse().setComplete();
+            }
+            log.info("Using token from query parameter for WebSocket authentication");
+        } else {
+            // Handle regular HTTP requests via Authorization header
+            String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                log.warn("Missing or invalid Authorization header for path: {}", path);
+                exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                return exchange.getResponse().setComplete();
+            }
+            token = authHeader.substring(7);
+        }
         Claims claims;
 
         try {

@@ -41,6 +41,13 @@ public class ReactiveProjectPermissionEvaluator {
 
         try {
             Action actionEnum = Action.valueOf(action.toUpperCase());
+            List<String> userRoles = getUserRoles(authentication);
+
+            // Allow service calls to have all permissions
+            if (userRoles.contains("ROLE_SERVICE")) {
+                return Mono.just(true);
+            }
+
             String currentUserId = getCurrentUserId(authentication);
 
             // Get project reactively and check permissions
@@ -99,6 +106,12 @@ public class ReactiveProjectPermissionEvaluator {
         try {
             Action actionEnum = Action.valueOf(action.toUpperCase());
             List<String> userRoles = getUserRoles(authentication);
+
+            // Allow service calls to have all permissions
+            if (userRoles.contains("ROLE_SERVICE")) {
+                return Mono.just(true);
+            }
+
             boolean hasPermission = basePermissionEvaluator.hasPermission(userRoles, actionEnum);
             return Mono.just(hasPermission);
         } catch (IllegalArgumentException e) {

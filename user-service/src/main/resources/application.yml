@@ -46,9 +46,9 @@ management:
     refresh:
       enabled: true
 
-# JWT disabled by default for easier development
+# JWT enabled for production security
 jwt:
-  enabled: false
+  enabled: true
   secret: my-very-secret-key-for-jwt-signing
 
 kafka:

@@ -2,6 +2,7 @@ package com.pm.commoncontracts.envelope;
 
 import java.time.Instant;
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 // Make sure this class is public
 public record EventEnvelope<T>(
@@ -11,6 +12,7 @@ public record EventEnvelope<T>(
         String sourceService, // Name of the service that published the event
         Instant timestamp,      // When the event was generated
         int version,          // Schema version for the payload
+        @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "@class")
         T payload             // The actual event data
 ) {
     // Optional: Convenience constructor setting defaults

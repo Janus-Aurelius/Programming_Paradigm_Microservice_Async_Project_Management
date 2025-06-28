@@ -21,6 +21,7 @@ import com.pm.commoncontracts.events.comment.CommentAddedEventPayload;
 import com.pm.commoncontracts.events.comment.CommentDeletedEventPayload;
 import com.pm.commoncontracts.events.comment.CommentEditedEventPayload;
 import com.pm.commoncontracts.events.notification.NotificationEvent;
+import com.pm.commoncontracts.events.notification.NotificationReadEventPayload;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
@@ -37,6 +38,7 @@ import com.pm.notificationservice.utils.NotificationUtils;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.context.ContextView;
 
 @Service
 public class NotificationService {
@@ -54,9 +56,12 @@ public class NotificationService {
     @Value("${kafka.topic.notification-dispatch}")
     private String dispatchTopic;
 
+    @Value("${kafka.topic.notification-events}")
+    private String notificationEventsTopic;
+
     public NotificationService(
             NotificationRepository notificationRepository,
-            ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
+            @Qualifier("reactiveKafkaProducerTemplate") ReactiveKafkaProducerTemplate<String, EventEnvelope<?>> kafkaTemplate,
             @Qualifier("taskWebClient") WebClient taskWebClient,
             @Qualifier("projectWebClient") WebClient projectWebClient) {
         this.notificationRepository = notificationRepository;
@@ -87,6 +92,11 @@ public class NotificationService {
     private Flux<Notification> generateNotificationsFromEvent(EventEnvelope<?> envelope, String correlationId) {
         Object payload = envelope.payload();
 
+        // Debug logging to understand payload deserialization
+        logger.debug("Payload type: {}, Event type: {}, CorrID: {}",
+                payload != null ? payload.getClass().getName() : "null",
+                envelope.eventType(), correlationId);
+
         try {
             if (payload instanceof TaskAssignedEventPayload taskAssignedEventPayload) {
                 return handleTaskAssignedEvent(taskAssignedEventPayload, envelope.eventType());
@@ -105,6 +115,12 @@ public class NotificationService {
             }
             if (payload instanceof ProjectCreatedEventPayload projectCreatedEventPayload) {
                 return handleProjectCreatedEvent(projectCreatedEventPayload, envelope.eventType());
+            }
+
+            // Handle PROJECT_CREATED event type even if payload deserialization failed
+            if ("PROJECT_CREATED".equals(envelope.eventType())) {
+                logger.info("Handling PROJECT_CREATED event with fallback deserialization. CorrID: {}", correlationId);
+                return handleProjectCreatedEventFallback(payload, envelope.eventType(), correlationId);
             }
             if (payload instanceof ProjectTaskCreatedEventPayload projectTaskCreatedEventPayload) {
                 return handleProjectTaskCreatedEvent(projectTaskCreatedEventPayload, envelope.eventType());
@@ -362,13 +378,13 @@ public class NotificationService {
     private Flux<Notification> getProjectCommentNotifications(String projectId, String authorUsername, String commentId,
             String eventType, Set<String> mentionedUsernames) {
         return projectWebClient.get()
-                .uri("/projects/{id}/owner", projectId)
+                .uri("/projects/{id}", projectId)
                 .retrieve()
-                .bodyToMono(UserDto.class)
-                .flatMapMany(owner -> {
-                    String ownerId = owner.getId();
-                    if (ownerId.equals(authorUsername)) {
-                        logger.debug("Comment author is the owner, no notification needed for project {}", projectId);
+                .bodyToMono(com.pm.commoncontracts.dto.ProjectDto.class)
+                .flatMapMany(project -> {
+                    String ownerId = project.getOwnerId();
+                    if (ownerId == null || ownerId.equals(authorUsername)) {
+                        logger.debug("Comment author is the owner or owner is null, no notification needed for project {}", projectId);
                         return Flux.empty();
                     }
 
@@ -438,14 +454,77 @@ public class NotificationService {
     }
 
     public Mono<Void> markNotificationRead(String notificationId, String userId) {
-        return notificationRepository.findById(notificationId)
-                .flatMap(notification -> {
-                    if (!notification.getRecipientUserId().equals(userId)) {
-                        return Mono.error(new RuntimeException("User not authorized to mark this notification as read"));
+        return Mono.deferContextual(contextView
+                -> notificationRepository.findById(notificationId)
+                        .flatMap(notification -> {
+                            if (!notification.getRecipientUserId().equals(userId)) {
+                                return Mono.error(new RuntimeException("User not authorized to mark this notification as read"));
+                            }
+                            notification.setRead(true);
+                            notification.setReadAt(java.time.Instant.now());
+                            return notificationRepository.save(notification)
+                                    .doOnSuccess(saved -> publishNotificationReadEvent(saved, contextView))
+                                    .then();
+                        })
+        );
+    }
+
+    /**
+     * Publishes a NotificationReadEvent after the notification is marked as
+     * read.
+     */
+    private void publishNotificationReadEvent(Notification notification, ContextView contextView) {
+        String correlationId = contextView.getOrDefault(
+                MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY,
+                "N/A-notification-read"
+        );
+        NotificationDto dto = NotificationUtils.entityToDto(notification);
+        NotificationReadEventPayload payload = new NotificationReadEventPayload(dto);
+        EventEnvelope<NotificationReadEventPayload> envelope = new EventEnvelope<>(
+                correlationId,
+                NotificationReadEventPayload.EVENT_TYPE,
+                serviceName,
+                payload
+        );
+        kafkaTemplate.send(notificationEventsTopic, envelope)
+                .doOnError(e -> logger.error("Failed to send NotificationReadEvent envelope. CorrID: {}", correlationId, e))
+                .subscribe();
+    }
+
+    private Flux<Notification> handleProjectCreatedEventFallback(Object payload, String eventType, String correlationId) {
+        try {
+            // Try to extract project data from the payload object
+            if (payload instanceof java.util.Map<?, ?> payloadMap) {
+                Object projectDtoObj = payloadMap.get("projectDto");
+                if (projectDtoObj instanceof java.util.Map<?, ?> projectMap) {
+                    String projectId = (String) projectMap.get("id");
+                    String projectName = (String) projectMap.get("name");
+                    String ownerId = (String) projectMap.get("ownerId");
+
+                    if (ownerId != null && projectId != null && projectName != null) {
+                        logger.info("Successfully extracted project data from fallback deserialization. Project: {}, Owner: {}, CorrID: {}",
+                                projectName, ownerId, correlationId);
+
+                        String message = String.format("You have been assigned as owner of the new project '%s'", projectName);
+                        return Flux.just(Notification.builder()
+                                .recipientUserId(ownerId)
+                                .event(NotificationEvent.PROJECT_CREATED)
+                                .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                                .entityId(projectId)
+                                .channel(NotificationChannel.WEBSOCKET)
+                                .message(message)
+                                .read(false)
+                                .createdAt(java.time.Instant.now())
+                                .build());
                     }
-                    notification.setRead(true);
-                    notification.setReadAt(java.time.Instant.now());
-                    return notificationRepository.save(notification).then();
-                });
+                }
+            }
+
+            logger.warn("Could not extract project data from payload fallback for PROJECT_CREATED event. CorrID: {}", correlationId);
+            return Flux.empty();
+        } catch (Exception e) {
+            logger.error("Error in PROJECT_CREATED fallback handler. CorrID: {}", correlationId, e);
+            return Flux.empty();
+        }
     }
 }

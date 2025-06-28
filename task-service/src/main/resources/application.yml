@@ -39,6 +39,15 @@ kafka:
   topic:
     task-events: task-events
 
+# Security configuration
+security:
+  devMode: false
+
+# JWT configuration for header-based authentication
+jwt:
+  enabled: true
+  secret: my-very-secret-key-for-jwt-signing
+
 logging:
   level:
     root: INFO
@@ -67,7 +76,6 @@ spring:
       uri: mongodb://mongo:27017/taskdb
   kafka:
     bootstrap-servers: kafka:9092
-
 ---
 spring:
   config:
@@ -78,4 +86,3 @@ spring:
       uri: mongodb://localhost:27017/taskdb
   kafka:
     bootstrap-servers: localhost:9092
-

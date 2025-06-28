@@ -86,7 +86,23 @@ public class WebSocketEventDispatcher {
 
         // Fan-out to every topic
         return Flux.fromIterable(topics)
-                .flatMap(topic -> registry.sendToTopic(topic, envelope))
+                .flatMap(topic -> {
+                    // If we have fallback deserialization, we need to create a proper envelope
+                    EventEnvelope<?> envelopeToSend = envelope;
+                    if (payload instanceof java.util.Map<?, ?> && !(payload instanceof NotificationToSendEventPayload)) {
+                        // Create a new envelope with the original data but ensure proper structure for WebSocket
+                        envelopeToSend = new EventEnvelope<>(
+                                envelope.eventId(),
+                                envelope.correlationId(),
+                                envelope.eventType(),
+                                envelope.sourceService(),
+                                envelope.timestamp(),
+                                envelope.version(),
+                                payload // Keep the map structure for now
+                        );
+                    }
+                    return registry.sendToTopic(topic, envelopeToSend);
+                })
                 .then(doAck(record))
                 .doOnSuccess(v -> log.debug("Successfully processed and acknowledged Kafka record. CorrID: {}", correlationId))
                 .doOnError(e -> log.error("Error sending WebSocket message for CorrID: {}. Error: {}", correlationId, e.getMessage()))
@@ -121,6 +137,19 @@ public class WebSocketEventDispatcher {
         // Only handle notification events - all other events should be processed by notification service first
         if (payload instanceof NotificationToSendEventPayload n) {
             return List.of("user:" + n.notification().getRecipientUserId());
+        }
+
+        // Fallback handling for deserialization issues
+        if (payload instanceof java.util.Map<?, ?> payloadMap) {
+            // Try to extract notification data from the payload map
+            Object notificationObj = payloadMap.get("notification");
+            if (notificationObj instanceof java.util.Map<?, ?> notificationMap) {
+                Object recipientUserId = notificationMap.get("recipientUserId");
+                if (recipientUserId instanceof String userId) {
+                    log.info("Using fallback deserialization for NotificationToSendEventPayload. Recipient: {}", userId);
+                    return List.of("user:" + userId);
+                }
+            }
         }
 
         log.warn("WebSocketEventDispatcher received unsupported payload type: {}. All domain events should be processed by notification service first.", payload.getClass().getName());

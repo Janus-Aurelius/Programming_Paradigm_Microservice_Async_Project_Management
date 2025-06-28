@@ -1,47 +1,34 @@
 package com.pm.commentservice.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableReactiveMethodSecurity;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.web.server.WebFilter;
-
-import com.pm.commentservice.security.CommentPermissionEvaluator;
-import com.pm.commonsecurity.security.UserIdHeaderWebFilter;
 
 @EnableWebFluxSecurity
 @EnableReactiveMethodSecurity
 @Configuration
+@ConditionalOnProperty(name = "jwt.enabled", havingValue = "true", matchIfMissing = false)
 public class SecurityConfig {
 
-    private final CommentPermissionEvaluator commentPermissionEvaluator;
+    private final HeaderBasedSecurityContextRepository securityContextRepository;
 
-    @Value("${security.devMode:true}")
-    private boolean devMode;
-
-    public SecurityConfig(CommentPermissionEvaluator commentPermissionEvaluator) {
-        this.commentPermissionEvaluator = commentPermissionEvaluator;
+    public SecurityConfig(HeaderBasedSecurityContextRepository securityContextRepository) {
+        this.securityContextRepository = securityContextRepository;
     }
 
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        http.csrf(csrf -> csrf.disable());
-        if (devMode) {
-            http.authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
-        } else {
-            http.authorizeExchange(exchanges -> exchanges
-                    .pathMatchers("/actuator/**").permitAll()
-                    .anyExchange().authenticated()
-            );
-        }
+        http
+                .csrf(csrf -> csrf.disable())
+                .securityContextRepository(securityContextRepository)
+                .authorizeExchange(exchanges -> exchanges
+                .pathMatchers("/actuator/**", "/health/**").permitAll()
+                .anyExchange().authenticated()
+                );
         return http.build();
-    }
-
-    @Bean
-    public WebFilter userIdHeaderWebFilter() {
-        return new UserIdHeaderWebFilter();
     }
 }

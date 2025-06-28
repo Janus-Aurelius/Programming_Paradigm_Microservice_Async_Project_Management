@@ -29,9 +29,9 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       properties:
+        spring.json.trusted.packages: "com.pm.commoncontracts.*" # Fixed: No leading space
         spring.json.add.type.headers: true # Ensure type info is included in headers
-        spring.json.type.mapping: eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope # Type mapping alias
-
+        spring.json.type.mapping: eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope,notificationToSendEventPayload:com.pm.commoncontracts.events.notification.NotificationToSendEventPayload # Type mapping alias
 
 kafka:
   topic:
@@ -43,6 +43,7 @@ kafka:
 
     #outgoing
     notification-dispatch: notifications-to-send
+    notification-events: notification-events
     # Add other topics if necessary
 
 services:
@@ -54,6 +55,15 @@ services:
     url: http://project-service:8082
   comment-service:
     url: http://comment-service:8088
+
+# Security configuration
+security:
+  devMode: false
+
+# JWT configuration for header-based authentication
+jwt:
+  enabled: true
+  secret: my-very-secret-key-for-jwt-signing
 
 logging:
   level:

@@ -89,7 +89,7 @@ services:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       user-service:
@@ -125,7 +125,7 @@ services:
       - "8083:8083"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
@@ -154,7 +154,7 @@ services:
       - "8082:8082"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
@@ -183,7 +183,7 @@ services:
       - "8081:8081"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
@@ -212,7 +212,7 @@ services:
       - "8085:8085"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       kafka:
@@ -239,7 +239,7 @@ services:
       - "8086:8086"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
@@ -268,7 +268,7 @@ services:
       - "8088:8088"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
-      - JWT_ENABLED=false
+      - JWT_ENABLED=true
       - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
     depends_on:
       mongo:
