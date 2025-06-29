@@ -109,8 +109,14 @@ public class CommentService {
                     Comment reply = new Comment();
                     reply.setContent(replyDto.getContent());
                     reply.setUserId(replyDto.getAuthorId());
-                    reply.setParentId(parentCommentId);
-                    reply.setParentType(ParentType.COMMENT);
+
+                    // Preserve the original parent information (task/project)
+                    reply.setParentId(parentComment.getParentId());
+                    reply.setParentType(parentComment.getParentType());
+
+                    // Set the parent comment ID to indicate this is a reply
+                    reply.setParentCommentId(parentCommentId);
+
                     reply.setCreatedAt(Instant.now());
                     reply.setUpdatedAt(reply.getCreatedAt());
 
@@ -140,8 +146,7 @@ public class CommentService {
             return Flux.error(new IllegalArgumentException("Parent comment ID must be provided"));
         }
 
-        return commentRepository.findByParentIdAndParentTypeOrderByCreatedAtAsc(
-                parentCommentId, ParentType.COMMENT)
+        return commentRepository.findByParentCommentIdOrderByCreatedAtAsc(parentCommentId)
                 .map(CommentUtils::entityToDto)
                 .doOnError(e -> log.error("Error fetching replies for comment: {}", parentCommentId, e))
                 .onErrorResume(e -> Flux.error(new RuntimeException("Failed to fetch replies for comment", e)))
@@ -288,5 +293,46 @@ public class CommentService {
     private boolean hasAdminRole(org.springframework.security.core.Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    /**
+     * Get all unique author IDs who have commented on a specific task
+     */
+    public Flux<String> getTaskCommentParticipants(String taskId) {
+        return commentRepository.findByParentIdAndParentType(taskId, ParentType.TASK)
+                .map(Comment::getUserId)
+                .distinct()
+                .doOnNext(authorId -> log.info("Found task comment participant: {} for task: {}", authorId, taskId));
+    }
+
+    /**
+     * Get all unique author IDs who have commented on a specific project
+     */
+    public Flux<String> getProjectCommentParticipants(String projectId) {
+        return commentRepository.findByParentIdAndParentType(projectId, ParentType.PROJECT)
+                .map(Comment::getUserId)
+                .distinct()
+                .doOnNext(authorId -> log.info("Found project comment participant: {} for project: {}", authorId, projectId));
+    }
+
+    /**
+     * Get all unique author IDs who have participated in a comment thread
+     * (including the parent comment and all replies)
+     */
+    public Flux<String> getCommentThreadParticipants(String parentCommentId) {
+        return commentRepository.findById(parentCommentId)
+                .flatMapMany(parentComment -> {
+                    // Get the parent comment's author
+                    Flux<String> parentAuthor = Flux.just(parentComment.getUserId());
+
+                    // Get all reply authors
+                    Flux<String> replyAuthors = commentRepository.findByParentCommentId(parentCommentId)
+                            .map(Comment::getUserId);
+
+                    // Combine and return distinct authors
+                    return Flux.concat(parentAuthor, replyAuthors);
+                })
+                .distinct()
+                .doOnNext(authorId -> log.info("Found comment thread participant: {} for thread: {}", authorId, parentCommentId));
     }
 }

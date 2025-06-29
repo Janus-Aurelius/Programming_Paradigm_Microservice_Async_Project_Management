@@ -26,6 +26,7 @@ import com.pm.commentservice.service.CommentService;
 import com.pm.commoncontracts.domain.ParentType;
 import com.pm.commoncontracts.dto.CommentDto;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -33,15 +34,11 @@ import reactor.core.publisher.Mono;
 @Slf4j
 @RestController
 @RequestMapping("/comments")
+@RequiredArgsConstructor
 public class CommentController {
 
     private final CommentService commentService;
     private final CommentPermissionEvaluator commentPermissionEvaluator;
-
-    public CommentController(CommentService commentService, CommentPermissionEvaluator commentPermissionEvaluator) {
-        this.commentService = commentService;
-        this.commentPermissionEvaluator = commentPermissionEvaluator;
-    }
 
     private String extractUserIdFromHeader(ServerHttpRequest request) {
         return request.getHeaders().getFirst("X-User-Id");
@@ -196,5 +193,29 @@ public class CommentController {
                     permissions.put("hasAccess", false);
                     return ResponseEntity.ok(permissions);
                 }));
+    }
+
+    /**
+     * Get all user IDs who have participated in comments for a specific task
+     */
+    @GetMapping("/task/{taskId}/participants")
+    public Flux<String> getTaskCommentParticipants(@PathVariable String taskId) {
+        return commentService.getTaskCommentParticipants(taskId);
+    }
+
+    /**
+     * Get all user IDs who have participated in comments for a specific project
+     */
+    @GetMapping("/project/{projectId}/participants")
+    public Flux<String> getProjectCommentParticipants(@PathVariable String projectId) {
+        return commentService.getProjectCommentParticipants(projectId);
+    }
+
+    /**
+     * Get all user IDs who have participated in a specific comment thread
+     */
+    @GetMapping("/{commentId}/thread-participants")
+    public Flux<String> getCommentThreadParticipants(@PathVariable String commentId) {
+        return commentService.getCommentThreadParticipants(commentId);
     }
 }

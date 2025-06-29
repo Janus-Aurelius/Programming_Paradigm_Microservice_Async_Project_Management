@@ -67,15 +67,25 @@ public class WebSocketEventDispatcher {
         String correlationId = envelope.correlationId() != null ? envelope.correlationId() : "N/A-kafka" + envelope.eventId();
         Object payload = envelope.payload();
         String eventType = envelope.eventType();
+        String recordKey = record.key(); // This could be the target WebSocket topic
 
         MDC.put("correlationId", correlationId);
         MDC.put("kafkaEventId", envelope.eventId().toString());
         MDC.put("kafkaEventType", eventType);
 
-        log.info("Processing event envelope. Type {}, CorrID: {}", eventType, correlationId);
+        log.info("Processing event envelope. Type {}, Key: {}, CorrID: {}", eventType, recordKey, correlationId);
 
         // Determine all relevant topics for this payload
-        List<String> topics = determineTopics(payload);
+        List<String> topics;
+
+        // If the record key looks like a WebSocket topic (e.g., "project:123", "task:456", "user:789"), use it directly
+        if (recordKey != null && (recordKey.startsWith("project:") || recordKey.startsWith("task:") || recordKey.startsWith("user:"))) {
+            topics = List.of(recordKey);
+            log.debug("Using Kafka record key as WebSocket topic: {}", recordKey);
+        } else {
+            // Fallback to determining topics from payload
+            topics = determineTopics(payload);
+        }
 
         if (topics.isEmpty()) {
             log.warn("No topics determined for event type: {}. CorrID: {}", eventType, correlationId);
@@ -134,9 +144,22 @@ public class WebSocketEventDispatcher {
             return List.of();
         }
 
-        // Only handle notification events - all other events should be processed by notification service first
+        // Handle notification events - route to user-specific topics
         if (payload instanceof NotificationToSendEventPayload n) {
             return List.of("user:" + n.notification().getRecipientUserId());
+        }
+
+        // Handle comment events from websocket-dispatch topic - these come with topic information
+        if (payload instanceof com.pm.commoncontracts.events.comment.CommentAddedEventPayload commentAdded) {
+            return getCommentEventTopics(commentAdded.commentDto());
+        }
+
+        if (payload instanceof com.pm.commoncontracts.events.comment.CommentEditedEventPayload commentEdited) {
+            return getCommentEventTopics(commentEdited.commentDto());
+        }
+
+        if (payload instanceof com.pm.commoncontracts.events.comment.CommentDeletedEventPayload commentDeleted) {
+            return getCommentEventTopics(commentDeleted.commentDto());
         }
 
         // Fallback handling for deserialization issues
@@ -150,10 +173,55 @@ public class WebSocketEventDispatcher {
                     return List.of("user:" + userId);
                 }
             }
+
+            // Try to extract comment data from the payload map
+            Object commentObj = payloadMap.get("commentDto");
+            if (commentObj instanceof java.util.Map<?, ?> commentMap) {
+                return getCommentEventTopicsFromMap(commentMap);
+            }
         }
 
         log.warn("WebSocketEventDispatcher received unsupported payload type: {}. All domain events should be processed by notification service first.", payload.getClass().getName());
         return List.of();
+    }
+
+    /**
+     * Helper method to determine topics for comment events
+     */
+    private List<String> getCommentEventTopics(com.pm.commoncontracts.dto.CommentDto commentDto) {
+        List<String> topics = new ArrayList<>();
+
+        if (commentDto.getParentType() != null && commentDto.getParentId() != null) {
+            String parentType = commentDto.getParentType().name().toLowerCase();
+            String parentId = commentDto.getParentId();
+
+            // Add the main parent topic (project:<id> or task:<id>)
+            topics.add(parentType + ":" + parentId);
+
+            log.debug("Comment event will be sent to topic: {}:{}", parentType, parentId);
+        }
+
+        return topics;
+    }
+
+    /**
+     * Helper method to determine topics for comment events from fallback map
+     * deserialization
+     */
+    private List<String> getCommentEventTopicsFromMap(java.util.Map<?, ?> commentMap) {
+        List<String> topics = new ArrayList<>();
+
+        Object parentType = commentMap.get("parentType");
+        Object parentId = commentMap.get("parentId");
+
+        if (parentType instanceof String pType && parentId instanceof String pId) {
+            String parentTypeLower = pType.toLowerCase();
+            topics.add(parentTypeLower + ":" + pId);
+
+            log.debug("Comment event (fallback) will be sent to topic: {}:{}", parentTypeLower, pId);
+        }
+
+        return topics;
     }
 
     @PreDestroy

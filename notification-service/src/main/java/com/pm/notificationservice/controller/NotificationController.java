@@ -58,6 +58,12 @@ public class NotificationController {
                     } else {
                         return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<Void>build());
                     }
+                })
+                .onErrorResume(error -> {
+                    if (error instanceof RuntimeException && error.getMessage().contains("not found")) {
+                        return Mono.just(ResponseEntity.notFound().<Void>build());
+                    }
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).<Void>build());
                 });
     }
 }

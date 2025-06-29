@@ -40,7 +40,10 @@ public class KafkaConsumerConfig {
         // CRITICAL: Add type mappings to handle the notification service's type aliases
         props.put(JsonDeserializer.TYPE_MAPPINGS,
                 "eventEnvelope:com.pm.commoncontracts.envelope.EventEnvelope,"
-                + "notificationToSendEventPayload:com.pm.commoncontracts.events.notification.NotificationToSendEventPayload"
+                + "notificationToSendEventPayload:com.pm.commoncontracts.events.notification.NotificationToSendEventPayload,"
+                + "commentAddedEventPayload:com.pm.commoncontracts.events.comment.CommentAddedEventPayload,"
+                + "commentEditedEventPayload:com.pm.commoncontracts.events.comment.CommentEditedEventPayload,"
+                + "commentDeletedEventPayload:com.pm.commoncontracts.events.comment.CommentDeletedEventPayload"
         );
 
         return ReceiverOptions.<String, EventEnvelope<?>>create(props)
@@ -51,5 +54,11 @@ public class KafkaConsumerConfig {
     public KafkaReceiver<String, EventEnvelope<?>> notificationEventsReceiver(
             @Value("${kafka.topic.notification-dispatch:notifications-to-send}") String notificationTopic) {
         return KafkaReceiver.create(createEventEnvelopeReceiverOptions(notificationTopic));
+    }
+
+    @Bean
+    public KafkaReceiver<String, EventEnvelope<?>> websocketDispatchReceiver(
+            @Value("${kafka.topic.websocket-dispatch:websocket-dispatch}") String websocketDispatchTopic) {
+        return KafkaReceiver.create(createEventEnvelopeReceiverOptions(websocketDispatchTopic));
     }
 }
