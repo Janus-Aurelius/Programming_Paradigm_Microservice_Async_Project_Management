@@ -1,5 +1,7 @@
 package com.pm.notificationservice.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -8,6 +10,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 @Configuration
 public class WebClientConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(WebClientConfig.class);
 
     @Value("${services.api-gateway.url:http://api-gateway:8080}")
     private String apiGatewayUrl;
@@ -57,6 +61,8 @@ public class WebClientConfig {
                 .baseUrl(apiGatewayUrl + "/api/projects")
                 .filter((request, next) -> {
                     String token = serviceTokenProvider.createServiceToken();
+                    logger.info("Adding X-Service-Token header for project request. URL: {}, Token preview: {}...",
+                            request.url(), token.length() > 10 ? token.substring(0, 10) : token);
                     var modifiedRequest = org.springframework.web.reactive.function.client.ClientRequest
                             .from(request)
                             .header("X-Service-Token", token)

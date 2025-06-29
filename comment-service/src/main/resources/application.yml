@@ -1,7 +1,7 @@
 server:
   port: 8088 # Assigning port 8088
   servlet:
-    context-path: /api/comments # Setting context path
+    context-path: /
 
 services:
   user-service:

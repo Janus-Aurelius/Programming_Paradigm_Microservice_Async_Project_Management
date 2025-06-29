@@ -335,10 +335,16 @@ public class NotificationService {
 
     private Flux<Notification> getTaskCommentNotifications(String taskId, String authorUsername, String commentId,
             String eventType, Set<String> mentionedUsernames) {
+        logger.info("Making taskWebClient call to get task assignee with ID: {}", taskId);
         return taskWebClient.get()
-                .uri("/tasks/{id}/assignee", taskId)
+                .uri("/{id}/assignee", taskId)
                 .retrieve()
                 .bodyToMono(UserDto.class)
+                .doOnError(error -> logger.error("Error calling task service for task {}: {}", taskId, error.getMessage()))
+                .onErrorResume(error -> {
+                    logger.error("Failed to get task assignee for task {}, skipping notifications", taskId, error);
+                    return Mono.empty();
+                })
                 .flatMapMany(assignee -> {
                     String assigneeId = assignee.getId();
                     if (assigneeId.equals(authorUsername)) {
@@ -377,10 +383,16 @@ public class NotificationService {
 
     private Flux<Notification> getProjectCommentNotifications(String projectId, String authorUsername, String commentId,
             String eventType, Set<String> mentionedUsernames) {
+        logger.info("Making projectWebClient call to get project with ID: {}", projectId);
         return projectWebClient.get()
-                .uri("/projects/{id}", projectId)
+                .uri("/{id}", projectId)
                 .retrieve()
                 .bodyToMono(com.pm.commoncontracts.dto.ProjectDto.class)
+                .doOnError(error -> logger.error("Error calling project service for project {}: {}", projectId, error.getMessage()))
+                .onErrorResume(error -> {
+                    logger.error("Failed to get project details for project {}, skipping notifications", projectId, error);
+                    return Mono.empty();
+                })
                 .flatMapMany(project -> {
                     String ownerId = project.getOwnerId();
                     if (ownerId == null || ownerId.equals(authorUsername)) {

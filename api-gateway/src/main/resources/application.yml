@@ -20,8 +20,6 @@ spring:
           uri: http://user-service:8083
           predicates:
             - Path=/api/users/**
-          filters:
-            - StripPrefix=2
 
         - id: project_service_route
           uri: http://project-service:8082

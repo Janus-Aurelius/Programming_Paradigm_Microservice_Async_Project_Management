@@ -1,7 +1,7 @@
 server:
   port: 8086 # Assigning port 8086
   servlet:
-    context-path: /api/notifications # Setting context path
+    context-path: /
 
 spring:
   application:
