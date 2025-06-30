@@ -56,6 +56,11 @@ public class SubscriptionRegistry {
 
     // Unified send method - the core of the new design
     public Mono<Void> sendToTopic(String topic, EventEnvelope<?> envelope) {
+        return sendToTopic(topic, envelope, null);
+    }
+
+    // Overloaded send method with exclusion capability
+    public Mono<Void> sendToTopic(String topic, EventEnvelope<?> envelope, String excludeUserId) {
         Set<WebSocketSession> sessions = topicSubscriptions.getOrDefault(topic, Collections.emptySet());
 
         if (sessions.isEmpty()) {
@@ -63,8 +68,15 @@ public class SubscriptionRegistry {
             return Mono.empty(); // No one to send to
         }
 
-        log.debug("Attempting to send event type [{}] for topic [{}] to {} session(s). CorrID: {}",
-                envelope.eventType(), topic, sessions.size(), envelope.correlationId());
+        // If we're excluding a user and this is a user topic for that user, skip entirely
+        if (excludeUserId != null && topic.equals("user:" + excludeUserId)) {
+            log.debug("Skipping send to topic [{}] because it belongs to excluded user [{}]", topic, excludeUserId);
+            return Mono.empty();
+        }
+
+        log.debug("Attempting to send event type [{}] for topic [{}] to {} session(s). CorrID: {}{}",
+                envelope.eventType(), topic, sessions.size(), envelope.correlationId(),
+                excludeUserId != null ? " (excluding user: " + excludeUserId + ")" : "");
 
         try {
             // Serialize the entire envelope once

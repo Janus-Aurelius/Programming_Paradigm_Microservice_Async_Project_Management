@@ -94,6 +94,9 @@ public class WebSocketEventDispatcher {
             return Mono.empty();
         }
 
+        // Extract originator user ID to prevent echoing events back to the user who triggered them
+        String excludeUserId = extractOriginatorUserId(payload);
+
         // Fan-out to every topic
         return Flux.fromIterable(topics)
                 .flatMap(topic -> {
@@ -111,7 +114,8 @@ public class WebSocketEventDispatcher {
                                 payload // Keep the map structure for now
                         );
                     }
-                    return registry.sendToTopic(topic, envelopeToSend);
+                    // Send to topic while excluding the originator to prevent duplicate events
+                    return registry.sendToTopic(topic, envelopeToSend, excludeUserId);
                 })
                 .then(doAck(record))
                 .doOnSuccess(v -> log.debug("Successfully processed and acknowledged Kafka record. CorrID: {}", correlationId))
@@ -131,6 +135,100 @@ public class WebSocketEventDispatcher {
         record.receiverOffset().acknowledge();
         clearMdc();
         return Mono.empty();
+    }
+
+    /**
+     * Extracts the originator user ID from domain events to prevent echoing
+     * events back to the user who triggered them. This helps eliminate
+     * duplicate events on the frontend.
+     *
+     * Note: Comments are excluded from filtering because they require immediate
+     * real-time feedback for collaborative editing scenarios.
+     */
+    private String extractOriginatorUserId(Object payload) {
+        if (payload == null) {
+            return null;
+        }
+
+        try {
+            // Handle TaskCreatedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.task.TaskCreatedEventPayload taskCreated) {
+                return taskCreated.taskDto().getCreatedBy();
+            }
+
+            // Handle TaskUpdatedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.task.TaskUpdatedEventPayload taskUpdated) {
+                return taskUpdated.taskDto().getUpdatedBy();
+            }
+
+            // Handle TaskStatusChangedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.task.TaskStatusChangedEventPayload taskStatusChanged) {
+                return taskStatusChanged.taskDto().getUpdatedBy();
+            }
+
+            // Handle TaskAssignedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.task.TaskAssignedEventPayload taskAssigned) {
+                return taskAssigned.taskDto().getUpdatedBy();
+            }
+
+            // Handle TaskPriorityChangedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.task.TaskPriorityChangedEventPayload taskPriorityChanged) {
+                return taskPriorityChanged.dto().getUpdatedBy();
+            }
+
+            // COMMENT EVENTS: Do NOT exclude originator - comments need real-time feedback
+            // Users expect to see their comments appear immediately and in real-time across all their sessions
+            if (payload instanceof com.pm.commoncontracts.events.comment.CommentAddedEventPayload
+                    || payload instanceof com.pm.commoncontracts.events.comment.CommentEditedEventPayload
+                    || payload instanceof com.pm.commoncontracts.events.comment.CommentDeletedEventPayload) {
+                log.debug("Comment event detected - allowing all users including originator to receive real-time updates");
+                return null; // Don't exclude anyone for comments
+            }
+
+            // Handle ProjectCreatedEventPayload
+            if (payload instanceof com.pm.commoncontracts.events.project.ProjectCreatedEventPayload projectCreated) {
+                return projectCreated.projectDto().getCreatedBy();
+            }
+
+            // Handle fallback deserialization with Map structure
+            if (payload instanceof java.util.Map<?, ?> payloadMap) {
+                // Try to extract from taskDto
+                Object taskDtoObj = payloadMap.get("taskDto");
+                if (taskDtoObj instanceof java.util.Map<?, ?> taskMap) {
+                    Object createdBy = taskMap.get("createdBy");
+                    Object updatedBy = taskMap.get("updatedBy");
+                    if (updatedBy instanceof String updatedByStr) {
+                        return updatedByStr;
+                    }
+                    if (createdBy instanceof String createdByStr) {
+                        return createdByStr;
+                    }
+                }
+
+                // Try to extract from commentDto
+                Object commentDtoObj = payloadMap.get("commentDto");
+                if (commentDtoObj instanceof java.util.Map<?, ?> commentMap) {
+                    Object authorId = commentMap.get("authorId");
+                    if (authorId instanceof String authorIdStr) {
+                        return authorIdStr;
+                    }
+                }
+
+                // Try to extract from projectDto
+                Object projectDtoObj = payloadMap.get("projectDto");
+                if (projectDtoObj instanceof java.util.Map<?, ?> projectMap) {
+                    Object createdBy = projectMap.get("createdBy");
+                    if (createdBy instanceof String createdByStr) {
+                        return createdByStr;
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.warn("Error extracting originator user ID from payload: {}", e.getMessage());
+        }
+
+        return null; // No originator ID found, don't exclude anyone
     }
 
     private void clearMdc() {

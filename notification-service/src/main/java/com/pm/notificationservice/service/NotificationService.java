@@ -27,9 +27,11 @@ import com.pm.commoncontracts.events.notification.NotificationEvent;
 import com.pm.commoncontracts.events.notification.NotificationReadEventPayload;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectDeletedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
 import com.pm.commoncontracts.events.task.TaskAssignedEventPayload;
 import com.pm.commoncontracts.events.task.TaskCreatedEventPayload;
+import com.pm.commoncontracts.events.task.TaskDeletedEventPayload;
 import com.pm.commoncontracts.events.task.TaskPriorityChangedEventPayload;
 import com.pm.commoncontracts.events.task.TaskStatusChangedEventPayload;
 import com.pm.commoncontracts.events.task.TaskUpdatedEventPayload;
@@ -125,6 +127,9 @@ public class NotificationService {
             if (payload instanceof ProjectCreatedEventPayload projectCreatedEventPayload) {
                 return handleProjectCreatedEvent(projectCreatedEventPayload, envelope.eventType());
             }
+            if (payload instanceof ProjectDeletedEventPayload projectDeletedEventPayload) {
+                return handleProjectDeletedEvent(projectDeletedEventPayload, envelope.eventType());
+            }
 
             // Handle PROJECT_CREATED event type even if payload deserialization failed
             if ("PROJECT_CREATED".equals(envelope.eventType())) {
@@ -181,6 +186,20 @@ public class NotificationService {
     private Flux<Notification> handleTaskStatusChangedEvent(TaskStatusChangedEventPayload taskStatusChanged, String eventType) {
         TaskDto updatedTask = taskStatusChanged.taskDto();
         String assigneeId = updatedTask.getAssigneeId();
+        String projectId = updatedTask.getProjectId();
+        String correlationId = "task-status-changed-" + updatedTask.getId();
+
+        logger.info("Handling TaskStatusChangedEvent for task '{}' (ID: {}) in project: {}, new status: {}",
+                updatedTask.getName(), updatedTask.getId(), projectId, updatedTask.getStatus());
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        if (projectId != null) {
+            publishTaskDomainEventToWebSocket(taskStatusChanged, "PROJECT", projectId, correlationId)
+                    .subscribe(
+                            v -> logger.debug("Successfully published task status change domain event to WebSocket topic. CorrID: {}", correlationId),
+                            e -> logger.error("Failed to publish task status change domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                    );
+        }
 
         // Only notify if there's an assignee
         if (assigneeId == null) {
@@ -413,6 +432,18 @@ public class NotificationService {
 
     private Flux<Notification> handleProjectCreatedEvent(ProjectCreatedEventPayload payload, String eventType) {
         var projectDto = payload.projectDto();
+        String correlationId = "project-created-" + projectDto.getId();
+
+        logger.info("Handling ProjectCreatedEvent for project '{}' (ID: {})",
+                projectDto.getName(), projectDto.getId());
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        publishProjectDomainEventToWebSocket(payload, correlationId)
+                .subscribe(
+                        v -> logger.debug("Successfully published project creation domain event to WebSocket topic. CorrID: {}", correlationId),
+                        e -> logger.error("Failed to publish project creation domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                );
+
         List<Notification> notifications = new ArrayList<>();
 
         // Notify the project owner
@@ -433,13 +464,40 @@ public class NotificationService {
                     projectDto.getOwnerId(), projectDto.getName());
         }
 
-        // Notify all team members (excluding the owner to avoid duplicate notifications)
+        // Notify all project managers (excluding the owner to avoid duplicate notifications)
+        if (projectDto.getManagerIds() != null && !projectDto.getManagerIds().isEmpty()) {
+            String managerMessage = String.format("You have been assigned as manager of the new project '%s'", projectDto.getName());
+
+            for (String managerId : projectDto.getManagerIds()) {
+                // Skip the owner as they already received an owner-specific notification
+                if (!managerId.equals(projectDto.getOwnerId())) {
+                    notifications.add(Notification.builder()
+                            .recipientUserId(managerId)
+                            .event(NotificationEvent.PROJECT_CREATED)
+                            .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                            .entityId(projectDto.getId())
+                            .channel(NotificationChannel.WEBSOCKET)
+                            .message(managerMessage)
+                            .read(false)
+                            .createdAt(java.time.Instant.now())
+                            .build());
+
+                    logger.info("Created notification for project manager: {} for project: {}",
+                            managerId, projectDto.getName());
+                }
+            }
+        }
+
+        // Notify all team members (excluding the owner and managers to avoid duplicate notifications)
         if (projectDto.getMemberIds() != null && !projectDto.getMemberIds().isEmpty()) {
             String memberMessage = String.format("You have been added to the new project '%s'", projectDto.getName());
 
             for (String memberId : projectDto.getMemberIds()) {
-                // Skip the owner as they already received an owner-specific notification
-                if (!memberId.equals(projectDto.getOwnerId())) {
+                // Skip the owner and managers as they already received specific notifications
+                boolean isOwner = memberId.equals(projectDto.getOwnerId());
+                boolean isManager = projectDto.getManagerIds() != null && projectDto.getManagerIds().contains(memberId);
+
+                if (!isOwner && !isManager) {
                     notifications.add(Notification.builder()
                             .recipientUserId(memberId)
                             .event(NotificationEvent.PROJECT_CREATED)
@@ -491,29 +549,59 @@ public class NotificationService {
     private Flux<Notification> handleTaskCreatedEvent(TaskCreatedEventPayload payload, String eventType) {
         var taskDto = payload.taskDto();
         String assigneeId = taskDto.getAssigneeId();
+        String projectId = taskDto.getProjectId();
+        String correlationId = "task-created-" + taskDto.getId(); // Generate correlation ID
 
+        logger.info("Handling TaskCreatedEvent for task '{}' (ID: {}) in project: {}",
+                taskDto.getName(), taskDto.getId(), projectId);
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        if (projectId != null) {
+            publishTaskDomainEventToWebSocket(payload, "PROJECT", projectId, correlationId)
+                    .subscribe(
+                            v -> logger.debug("Successfully published task creation domain event to WebSocket topic. CorrID: {}", correlationId),
+                            e -> logger.error("Failed to publish task creation domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                    );
+        }
+
+        // Create notification for assignee if there is one
         if (assigneeId != null) {
             logger.info("Creating task creation notification for task '{}' (ID: {}) for assignee: {}",
                     taskDto.getName(), taskDto.getId(), assigneeId);
+            return notifyAssigneeOnly(taskDto, eventType, String.format("A new task '%s' has been assigned to you", taskDto.getName()), com.pm.commoncontracts.domain.ParentType.TASK.name());
         } else {
             logger.debug("Task '{}' created but has no assignee, skipping notification", taskDto.getName());
+            return Flux.empty();
         }
-
-        return notifyAssigneeOnly(taskDto, eventType, String.format("A new task '%s' has been assigned to you", taskDto.getName()), com.pm.commoncontracts.domain.ParentType.TASK.name());
     }
 
     private Flux<Notification> handleTaskUpdatedEvent(TaskUpdatedEventPayload payload, String eventType) {
         var taskDto = payload.taskDto();
         String assigneeId = taskDto.getAssigneeId();
+        String projectId = taskDto.getProjectId();
+        String correlationId = "task-updated-" + taskDto.getId();
 
+        logger.info("Handling TaskUpdatedEvent for task '{}' (ID: {}) in project: {}",
+                taskDto.getName(), taskDto.getId(), projectId);
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        if (projectId != null) {
+            publishTaskDomainEventToWebSocket(payload, "PROJECT", projectId, correlationId)
+                    .subscribe(
+                            v -> logger.debug("Successfully published task update domain event to WebSocket topic. CorrID: {}", correlationId),
+                            e -> logger.error("Failed to publish task update domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                    );
+        }
+
+        // Create notification for assignee if there is one
         if (assigneeId != null) {
             logger.info("Creating task update notification for task '{}' (ID: {}) for assignee: {}",
                     taskDto.getName(), taskDto.getId(), assigneeId);
+            return notifyAssigneeOnly(taskDto, eventType, String.format("Task '%s' was updated", taskDto.getName()), com.pm.commoncontracts.domain.ParentType.TASK.name());
         } else {
             logger.debug("Task '{}' updated but has no assignee, skipping notification", taskDto.getName());
+            return Flux.empty();
         }
-
-        return notifyAssigneeOnly(taskDto, eventType, String.format("Task '%s' was updated", taskDto.getName()), com.pm.commoncontracts.domain.ParentType.TASK.name());
     }
 
     private Flux<Notification> handleTaskPriorityChangedEvent(TaskPriorityChangedEventPayload payload, String eventType) {
@@ -1045,6 +1133,7 @@ public class NotificationService {
                     String projectName = (String) projectMap.get("name");
                     String ownerId = (String) projectMap.get("ownerId");
                     Object memberIdsObj = projectMap.get("memberIds");
+                    Object managerIdsObj = projectMap.get("managerIds");
 
                     List<Notification> notifications = new ArrayList<>();
 
@@ -1069,14 +1158,53 @@ public class NotificationService {
                                 ownerId, projectName, correlationId);
                     }
 
-                    // Notify team members
+                    // Notify project managers (excluding the owner to avoid duplicate notifications)
+                    if (managerIdsObj instanceof java.util.List<?> managerIdsList && projectId != null && projectName != null) {
+                        String managerMessage = String.format("You have been assigned as manager of the new project '%s'", projectName);
+
+                        for (Object managerIdObj : managerIdsList) {
+                            if (managerIdObj instanceof String managerId) {
+                                // Skip the owner as they already received an owner-specific notification
+                                if (!managerId.equals(ownerId)) {
+                                    notifications.add(Notification.builder()
+                                            .recipientUserId(managerId)
+                                            .event(NotificationEvent.PROJECT_CREATED)
+                                            .entityType(com.pm.commoncontracts.domain.ParentType.PROJECT)
+                                            .entityId(projectId)
+                                            .channel(NotificationChannel.WEBSOCKET)
+                                            .message(managerMessage)
+                                            .read(false)
+                                            .createdAt(java.time.Instant.now())
+                                            .build());
+
+                                    logger.info("Created fallback notification for project manager: {} for project: {}, CorrID: {}",
+                                            managerId, projectName, correlationId);
+                                }
+                            }
+                        }
+                    }
+
+                    // Collect manager IDs for exclusion from member notifications
+                    java.util.Set<String> managerIdsSet = new java.util.HashSet<>();
+                    if (managerIdsObj instanceof java.util.List<?> managerIdsList) {
+                        for (Object managerIdObj : managerIdsList) {
+                            if (managerIdObj instanceof String managerId) {
+                                managerIdsSet.add(managerId);
+                            }
+                        }
+                    }
+
+                    // Notify team members (excluding the owner and managers to avoid duplicate notifications)
                     if (memberIdsObj instanceof java.util.List<?> memberIdsList && projectId != null && projectName != null) {
                         String memberMessage = String.format("You have been added to the new project '%s'", projectName);
 
                         for (Object memberIdObj : memberIdsList) {
                             if (memberIdObj instanceof String memberId) {
-                                // Skip the owner as they already received an owner-specific notification
-                                if (!memberId.equals(ownerId)) {
+                                // Skip the owner and managers as they already received specific notifications
+                                boolean isOwner = memberId.equals(ownerId);
+                                boolean isManager = managerIdsSet.contains(memberId);
+
+                                if (!isOwner && !isManager) {
                                     notifications.add(Notification.builder()
                                             .recipientUserId(memberId)
                                             .event(NotificationEvent.PROJECT_CREATED)
@@ -1135,6 +1263,52 @@ public class NotificationService {
     }
 
     /**
+     * Publishes task domain events to WebSocket topics for frontend real-time
+     * updates
+     */
+    private Mono<Void> publishTaskDomainEventToWebSocket(Object eventPayload, String parentType, String parentId, String correlationId) {
+        // Create envelope for WebSocket dispatch
+        EventEnvelope<?> websocketEnvelope = new EventEnvelope<>(
+                correlationId,
+                determineWebSocketEventType(eventPayload),
+                serviceName,
+                eventPayload
+        );
+
+        // Determine the WebSocket topic based on parent type and ID
+        String websocketTopic = parentType.toLowerCase() + ":" + parentId;
+
+        logger.debug("Publishing task domain event to WebSocket topic: {} for CorrID: {}", websocketTopic, correlationId);
+
+        return kafkaTemplate.send(websocketDispatchTopic, websocketTopic, websocketEnvelope)
+                .doOnError(e -> logger.error("Failed to publish task domain event to WebSocket topic: {}. CorrID: {}", websocketTopic, correlationId, e))
+                .then();
+    }
+
+    /**
+     * Publishes project domain events to WebSocket topics for frontend
+     * real-time updates
+     */
+    private Mono<Void> publishProjectDomainEventToWebSocket(Object eventPayload, String correlationId) {
+        // Create envelope for WebSocket dispatch
+        EventEnvelope<?> websocketEnvelope = new EventEnvelope<>(
+                correlationId,
+                determineWebSocketEventType(eventPayload),
+                serviceName,
+                eventPayload
+        );
+
+        // Use a global projects topic for project-level events
+        String websocketTopic = "projects";
+
+        logger.debug("Publishing project domain event to WebSocket topic: {} for CorrID: {}", websocketTopic, correlationId);
+
+        return kafkaTemplate.send(websocketDispatchTopic, websocketTopic, websocketEnvelope)
+                .doOnError(e -> logger.error("Failed to publish project domain event to WebSocket topic: {}. CorrID: {}", websocketTopic, correlationId, e))
+                .then();
+    }
+
+    /**
      * Determines the WebSocket event type based on the payload
      */
     private String determineWebSocketEventType(Object eventPayload) {
@@ -1144,7 +1318,44 @@ public class NotificationService {
             return "COMMENT_EDITED";
         } else if (eventPayload instanceof CommentDeletedEventPayload) {
             return "COMMENT_DELETED";
+        } else if (eventPayload instanceof TaskCreatedEventPayload) {
+            return "TASK_CREATED";
+        } else if (eventPayload instanceof TaskUpdatedEventPayload) {
+            return "TASK_UPDATED";
+        } else if (eventPayload instanceof TaskDeletedEventPayload) {
+            return "TASK_DELETED";
+        } else if (eventPayload instanceof TaskStatusChangedEventPayload) {
+            return "TASK_STATUS_CHANGED";
+        } else if (eventPayload instanceof TaskAssignedEventPayload) {
+            return "TASK_ASSIGNED";
+        } else if (eventPayload instanceof TaskPriorityChangedEventPayload) {
+            return "TASK_PRIORITY_CHANGED";
+        } else if (eventPayload instanceof ProjectCreatedEventPayload) {
+            return "PROJECT_CREATED";
+        } else if (eventPayload instanceof ProjectDeletedEventPayload) {
+            return "PROJECT_DELETED";
         }
-        return "UNKNOWN_COMMENT_EVENT";
+        return "UNKNOWN_EVENT";
+    }
+
+    private Flux<Notification> handleProjectDeletedEvent(ProjectDeletedEventPayload payload, String eventType) {
+        var projectDto = payload.projectDto();
+        String correlationId = "project-deleted-" + projectDto.getId();
+
+        logger.info("Handling ProjectDeletedEvent for project '{}' (ID: {})",
+                projectDto.getName(), projectDto.getId());
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        publishProjectDomainEventToWebSocket(payload, correlationId)
+                .subscribe(
+                        v -> logger.debug("Successfully published project deletion domain event to WebSocket topic. CorrID: {}", correlationId),
+                        e -> logger.error("Failed to publish project deletion domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                );
+
+        // For project deletion, we don't typically send individual notifications
+        // The real-time WebSocket update is sufficient for UI updates
+        // Users will be notified through the project disappearing from their lists
+        logger.info("Project deletion event processed for project '{}', WebSocket update sent", projectDto.getName());
+        return Flux.empty(); // No individual notifications for deletions
     }
 }
