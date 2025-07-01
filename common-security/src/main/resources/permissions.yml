@@ -59,4 +59,5 @@ rbac:
       - CMT_DELETE_ANY
 
     ROLE_ADMIN:
+      - USER_CREATE
       - "**"

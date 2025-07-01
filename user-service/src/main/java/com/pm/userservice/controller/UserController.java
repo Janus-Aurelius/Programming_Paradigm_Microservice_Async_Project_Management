@@ -94,7 +94,7 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasPermission(null, 'USER_CREATE')")
+    @PreAuthorize("hasRole('ROLE_ADMIN')")
     public Mono<ResponseEntity<UserDto>> createUser(@Valid @RequestBody UserDto userDto, UriComponentsBuilder uriBuilder) {
         log.info("Creating new user: {}", userDto.getEmail());
         return userService.createUser(userDto)

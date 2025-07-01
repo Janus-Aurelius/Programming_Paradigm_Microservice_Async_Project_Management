@@ -52,7 +52,6 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         // Allow requests without JWT for login and test endpoints
         if (path.startsWith("/api/users/auth/login")
                 || path.startsWith("/api/users/auth/register")
-                || (path.startsWith("/api/users") && "POST".equals(method))
                 || path.contains("/test/")
                 || path.endsWith("/test")
                 || path.startsWith("/test")) {
