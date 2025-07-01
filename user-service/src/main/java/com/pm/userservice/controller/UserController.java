@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -164,10 +165,11 @@ public class UserController {
                         String role = UserUtils.getRoleAsString(user);
                         String token = jwtUtil.generateToken(
                                 user.getId(),
-                                user.getEmail(),
+                                user.getEmail(), 
                                 role,
                                 com.pm.userservice.config.JwtConfig.JWT_EXPIRATION_MS
                         );
+                        
                         // Convert to DTO for response (without password)
                         UserDto userDto = UserUtils.toDto(user);
                         return Mono.just(ResponseEntity.ok(new JwtResponse(token, userDto)));
@@ -181,5 +183,41 @@ public class UserController {
                     return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<JwtResponse>build());
                 })
                 .defaultIfEmpty(ResponseEntity.status(HttpStatus.UNAUTHORIZED).<JwtResponse>build());
+    }
+
+    
+
+    @GetMapping("/me")
+    @PreAuthorize("hasPermission(null, 'USER_SELF_READ')")
+    public Mono<ResponseEntity<UserDto>> getCurrentUser(Authentication authentication) {
+        String userId = authentication.getName();
+        log.info("Fetching current user profile for: {}", userId);
+        return userService.getUserById(userId)
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.notFound().build());
+    }
+
+    @PatchMapping("/me/profile")
+    @PreAuthorize("hasPermission(null, 'USER_SELF_UPDATE')")
+    public Mono<ResponseEntity<UserDto>> updateCurrentUserProfile(@RequestBody UserDto profileDto, Authentication authentication) {
+        String userId = authentication.getName();
+        log.info("Updating current user profile for: {}", userId);
+        return userService.updateUserProfile(userId, profileDto)
+                .map(ResponseEntity::ok)
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
+                );
+    }
+
+    @PatchMapping("/me/password")
+    @PreAuthorize("hasPermission(null, 'USER_SELF_UPDATE')")
+    public Mono<ResponseEntity<Void>> changeCurrentUserPassword(@RequestBody UserDto passwordDto, Authentication authentication) {
+        String userId = authentication.getName();
+        log.info("Changing password for current user: {}", userId);
+        return userService.changeUserPassword(userId, passwordDto.getPassword())
+                .thenReturn(ResponseEntity.noContent().<Void>build())
+                .onErrorResume(ResourceNotFoundException.class, e
+                        -> Mono.just(ResponseEntity.notFound().build())
+                );
     }
 }
