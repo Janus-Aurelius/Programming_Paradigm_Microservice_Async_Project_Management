@@ -28,6 +28,7 @@ rbac:
       - TASK_UPDATE
       - TASK_STATUS_CHANGE
       - TASK_PRIORITY_CHANGE
+      - TASK_ASSIGN
 
     ROLE_PROJECT_MANAGER:
       - USER_SELF_READ
@@ -50,6 +51,7 @@ rbac:
       - PRJ_DELETE
       - PRJ_ARCHIVE
       - PRJ_STATUS_CHANGE
+      - PRJ_PRIORITY_CHANGE
       - PRJ_MEMBER_ADD
       - PRJ_MEMBER_REMOVE
       - TASK_ASSIGN

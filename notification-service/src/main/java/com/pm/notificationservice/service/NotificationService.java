@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.pm.commoncontracts.domain.NotificationChannel;
+import com.pm.commoncontracts.domain.ProjectPriority;
 import com.pm.commoncontracts.domain.TaskPriority;
 import com.pm.commoncontracts.domain.TaskStatus;
 import com.pm.commoncontracts.dto.CommentDto;
@@ -28,6 +29,7 @@ import com.pm.commoncontracts.events.notification.NotificationReadEventPayload;
 import com.pm.commoncontracts.events.notification.NotificationToSendEventPayload;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectDeletedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectPriorityChangedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
 import com.pm.commoncontracts.events.task.TaskAssignedEventPayload;
 import com.pm.commoncontracts.events.task.TaskCreatedEventPayload;
@@ -147,6 +149,9 @@ public class NotificationService {
             }
             if (payload instanceof TaskPriorityChangedEventPayload taskPriorityChangedEventPayload) {
                 return handleTaskPriorityChangedEvent(taskPriorityChangedEventPayload, envelope.eventType());
+            }
+            if (payload instanceof ProjectPriorityChangedEventPayload projectPriorityChangedEventPayload) {
+                return handleProjectPriorityChangedEvent(projectPriorityChangedEventPayload, envelope.eventType());
             }
             // ProjectUpdatedEventPayload, ProjectStatusChangedEventPayload: no notification per your rule
             // ProjectDeletedEventPayload, UserCreatedEventPayload, UserUpdatedEventPayload: ignored
@@ -693,6 +698,113 @@ public class NotificationService {
 
         logger.debug("No assignee found for task '{}', skipping {} notification", taskDto.getName(), eventType);
         return Flux.empty();
+    }
+
+    private Flux<Notification> handleProjectPriorityChangedEvent(ProjectPriorityChangedEventPayload payload, String eventType) {
+        var projectDto = payload.projectDto();
+        String correlationId = "project-priority-changed-" + projectDto.getId();
+
+        logger.info("Handling ProjectPriorityChangedEvent for project '{}' (ID: {}), new priority: {}",
+                projectDto.getName(), projectDto.getId(), projectDto.getPriority());
+
+        // Publish domain event to WebSocket for frontend real-time updates
+        publishProjectDomainEventToWebSocket(payload, correlationId)
+                .subscribe(
+                        v -> logger.debug("Successfully published project priority change domain event to WebSocket topic. CorrID: {}", correlationId),
+                        e -> logger.error("Failed to publish project priority change domain event to WebSocket topic. CorrID: {}", correlationId, e)
+                );
+
+        String projectName = projectDto.getName();
+        String message = getProjectPriorityChangeMessage(projectDto.getPriority(), projectName);
+
+        // Only notify for significant priority changes
+        if (!isSignificantProjectPriorityChange(projectDto.getPriority())) {
+            logger.debug("Priority change for project '{}' to {} is not significant enough for notification",
+                    projectName, projectDto.getPriority());
+            return Flux.empty();
+        }
+
+        logger.info("Creating priority change notifications for project '{}' (priority: {}) for all stakeholders",
+                projectName, projectDto.getPriority());
+
+        return notifyProjectStakeholders(projectDto, eventType, message);
+    }
+
+    /**
+     * Determines if a project priority change is significant enough to warrant
+     * a notification
+     */
+    private boolean isSignificantProjectPriorityChange(ProjectPriority priority) {
+        return switch (priority) {
+            case HIGH ->
+                true;      // High priority - important for all stakeholders
+            case MEDIUM ->
+                false;     // Medium priority - normal workflow
+            case LOW ->
+                false;      // Low priority - less critical
+        };
+    }
+
+    /**
+     * Generates appropriate message based on the project priority
+     */
+    private String getProjectPriorityChangeMessage(ProjectPriority priority, String projectName) {
+        return switch (priority) {
+            case HIGH ->
+                String.format("⚠️ Project '%s' priority has been set to HIGH", projectName);
+            case MEDIUM ->
+                String.format("Project '%s' priority has been changed to MEDIUM", projectName);
+            case LOW ->
+                String.format("Project '%s' priority has been lowered to LOW", projectName);
+        };
+    }
+
+    /**
+     * Notifies all project stakeholders (owner, managers, members)
+     */
+    private Flux<Notification> notifyProjectStakeholders(com.pm.commoncontracts.dto.ProjectDto projectDto, String eventType, String message) {
+        List<Notification> notifications = new ArrayList<>();
+        Set<String> notifiedUsers = new HashSet<>();
+
+        // Notify project owner
+        if (projectDto.getOwnerId() != null) {
+            notifications.add(createNotification(projectDto.getOwnerId(), eventType, projectDto.getId(),
+                    com.pm.commoncontracts.domain.ParentType.PROJECT, message));
+            notifiedUsers.add(projectDto.getOwnerId());
+            logger.info("Added priority change notification for project owner: {} for project: {}",
+                    projectDto.getOwnerId(), projectDto.getName());
+        }
+
+        // Notify project managers (excluding owner to avoid duplicates)
+        if (projectDto.getManagerIds() != null) {
+            for (String managerId : projectDto.getManagerIds()) {
+                if (!notifiedUsers.contains(managerId)) {
+                    notifications.add(createNotification(managerId, eventType, projectDto.getId(),
+                            com.pm.commoncontracts.domain.ParentType.PROJECT, message));
+                    notifiedUsers.add(managerId);
+                    logger.info("Added priority change notification for project manager: {} for project: {}",
+                            managerId, projectDto.getName());
+                }
+            }
+        }
+
+        // Notify all project members (excluding those already notified)
+        if (projectDto.getMemberIds() != null) {
+            for (String memberId : projectDto.getMemberIds()) {
+                if (!notifiedUsers.contains(memberId)) {
+                    notifications.add(createNotification(memberId, eventType, projectDto.getId(),
+                            com.pm.commoncontracts.domain.ParentType.PROJECT, message));
+                    notifiedUsers.add(memberId);
+                    logger.info("Added priority change notification for project member: {} for project: {}",
+                            memberId, projectDto.getName());
+                }
+            }
+        }
+
+        logger.info("Total project priority change notifications created for project '{}': {}",
+                projectDto.getName(), notifications.size());
+
+        return Flux.fromIterable(notifications);
     }
 
     private Flux<Notification> getTaskCommentNotifications(String taskId, String authorId, String commentId,
@@ -1332,6 +1444,8 @@ public class NotificationService {
             return "TASK_PRIORITY_CHANGED";
         } else if (eventPayload instanceof ProjectCreatedEventPayload) {
             return "PROJECT_CREATED";
+        } else if (eventPayload instanceof ProjectPriorityChangedEventPayload) {
+            return "PROJECT_PRIORITY_CHANGED";
         } else if (eventPayload instanceof ProjectDeletedEventPayload) {
             return "PROJECT_DELETED";
         }

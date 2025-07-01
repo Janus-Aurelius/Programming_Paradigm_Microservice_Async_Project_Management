@@ -25,6 +25,7 @@ import com.pm.commoncontracts.domain.ProjectStatus;
 import com.pm.commoncontracts.dto.ProjectDto;
 import com.pm.commoncontracts.dto.TaskDto;
 import com.pm.commoncontracts.requestDto.project.UpdateProjectStatusRequestDto;
+import com.pm.commoncontracts.requestDto.project.UpdateProjectPriorityRequestDto;
 import com.pm.projectservice.security.ReactiveProjectPermissionEvaluator;
 import com.pm.projectservice.service.ProjectService;
 
@@ -219,6 +220,26 @@ public class ProjectController {
                 .flatMap(hasAccess -> {
                     if (hasAccess) {
                         return projectService.updateProjectStatus(id, request.getNewStatus(), request.getExpectedVersion())
+                                .map(ResponseEntity::ok)
+                                .defaultIfEmpty(ResponseEntity.notFound().build());
+                    } else {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).<ProjectDto>build());
+                    }
+                });
+    }
+
+    @PutMapping("/{id}/priority")
+    public Mono<ResponseEntity<ProjectDto>> updateProjectPriority(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateProjectPriorityRequestDto request,
+            Authentication authentication
+    ) {
+        log.info("Received request to update priority for project {} to {}", id, request.getNewPriority());
+
+        return permissionEvaluator.hasPermission(authentication, id, "PRJ_PRIORITY_CHANGE")
+                .flatMap(hasAccess -> {
+                    if (hasAccess) {
+                        return projectService.updateProjectPriority(id, request.getNewPriority(), request.getExpectedVersion())
                                 .map(ResponseEntity::ok)
                                 .defaultIfEmpty(ResponseEntity.notFound().build());
                     } else {

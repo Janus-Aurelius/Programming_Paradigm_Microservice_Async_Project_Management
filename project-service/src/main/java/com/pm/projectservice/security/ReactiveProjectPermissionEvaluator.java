@@ -142,7 +142,7 @@ public class ReactiveProjectPermissionEvaluator {
                 List<String> userRoles = getUserRoles(authentication);
                 yield basePermissionEvaluator.hasPermission(userRoles, action);
             }
-            case PRJ_UPDATE, PRJ_STATUS_CHANGE -> {
+            case PRJ_UPDATE, PRJ_STATUS_CHANGE, PRJ_PRIORITY_CHANGE -> {
                 // Only creators and project managers can update projects
                 if (isCreator) {
                     yield true;

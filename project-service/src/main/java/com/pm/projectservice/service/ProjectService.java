@@ -13,11 +13,13 @@ import org.springframework.stereotype.Service; // Assuming this provides the con
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.pm.commoncontracts.domain.ProjectStatus;
+import com.pm.commoncontracts.domain.ProjectPriority;
 import com.pm.commoncontracts.dto.ProjectDto; // Using your existing mapper utility
 import com.pm.commoncontracts.dto.TaskDto; // Your internal domain entity
 import com.pm.commoncontracts.envelope.EventEnvelope;
 import com.pm.commoncontracts.events.project.ProjectCreatedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectDeletedEventPayload;
+import com.pm.commoncontracts.events.project.ProjectPriorityChangedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectStatusChangedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectTaskCreatedEventPayload;
 import com.pm.commoncontracts.events.project.ProjectUpdatedEventPayload;
@@ -229,9 +231,20 @@ public class ProjectService {
                 -> projectRepository.findById(id)
                         .flatMap(existingProject -> {
                             // Validate optimistic locking if version is provided
+                            log.info("Comparing versions - DTO version: {}, Existing version: {}",
+                                    projectDto.getVersion(), existingProject.getVersion());
                             if (projectDto.getVersion() != null && !projectDto.getVersion().equals(existingProject.getVersion())) {
+                                log.warn("Version mismatch - DTO version: {} (type: {}), Existing version: {} (type: {})",
+                                        projectDto.getVersion(), projectDto.getVersion().getClass().getSimpleName(),
+                                        existingProject.getVersion(), existingProject.getVersion().getClass().getSimpleName());
                                 return Mono.error(new RuntimeException("Project has been modified by another user. Please refresh and try again."));
                             }
+
+                            // Track changes for specific events
+                            boolean statusChanged = false;
+                            boolean priorityChanged = false;
+                            ProjectStatus oldStatus = existingProject.getStatus();
+                            ProjectPriority oldPriority = existingProject.getPriority();
 
                             // Update only the fields that are provided, keeping the existing project's ID and version
                             if (projectDto.getName() != null) {
@@ -240,11 +253,13 @@ public class ProjectService {
                             if (projectDto.getDescription() != null) {
                                 existingProject.setDescription(projectDto.getDescription());
                             }
-                            if (projectDto.getStatus() != null) {
+                            if (projectDto.getStatus() != null && !projectDto.getStatus().equals(oldStatus)) {
                                 existingProject.setStatus(projectDto.getStatus());
+                                statusChanged = true;
                             }
-                            if (projectDto.getPriority() != null) {
+                            if (projectDto.getPriority() != null && !projectDto.getPriority().equals(oldPriority)) {
                                 existingProject.setPriority(projectDto.getPriority());
+                                priorityChanged = true;
                             }
                             if (projectDto.getCreatedBy() != null) {
                                 existingProject.setCreatedBy(projectDto.getCreatedBy());
@@ -264,11 +279,28 @@ public class ProjectService {
                             if (projectDto.getManagerIds() != null) {
                                 existingProject.setManagerIds(projectDto.getManagerIds());
                             }
+
                             // Keep the existing version - Spring Data will handle version increment automatically
+                            final boolean finalStatusChanged = statusChanged;
+                            final boolean finalPriorityChanged = priorityChanged;
+
                             return projectRepository.save(existingProject)
                                     .doOnError(e -> log.error("Error updating project with ID: {}", id, e))
                                     .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project", e)))
-                                    .doOnSuccess(updatedProject -> publishProjectUpdatedEvent(updatedProject, contextView));
+                                    .doOnSuccess(updatedProject -> {
+                                        ProjectDto updatedDto = ProjectUtils.entityToDto(updatedProject);
+
+                                        // Publish general update event
+                                        publishProjectUpdatedEvent(updatedProject, contextView);
+
+                                        // Publish specific events if fields changed
+                                        if (finalStatusChanged) {
+                                            publishProjectStatusChangedEvent(updatedDto, contextView);
+                                        }
+                                        if (finalPriorityChanged) {
+                                            publishProjectPriorityChangedEvent(updatedDto, contextView);
+                                        }
+                                    });
                         })
                         .map(ProjectUtils::entityToDto)
                         .switchIfEmpty(Mono.error(new RuntimeException("Project not found for update: " + id)))
@@ -320,10 +352,104 @@ public class ProjectService {
         }
     }
 
+    private void publishProjectStatusChangedEvent(ProjectDto projectDto, ContextView contextView) {
+        try {
+            String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-status-change");
+            ProjectStatusChangedEventPayload payload = new ProjectStatusChangedEventPayload(projectDto);
+            EventEnvelope<ProjectStatusChangedEventPayload> envelope = new EventEnvelope<>(
+                    correlationId,
+                    ProjectStatusChangedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectStatusChangedEvent envelope for projectId: {} with correlationId: {}", projectDto.getId(), correlationId);
+            kafkaTemplate.send(projectEventsTopic, projectDto.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectStatusChangedEvent envelope for projectId: {}", projectDto.getId(), e))
+                    .onErrorResume(e -> {
+                        // TODO: Optionally send to dead-letter topic here
+                        log.error("Unrecoverable error publishing ProjectStatusChangedEvent for projectId: {}", projectDto.getId(), e);
+                        return Mono.empty();
+                    })
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectStatusChangedEvent for projectId: {}", projectDto.getId(), e);
+        }
+    }
+
+    public Mono<ProjectDto> updateProjectPriority(String projectId, ProjectPriority newPriority, Long expectedVersion) {
+        return projectRepository.findById(projectId)
+                .flatMap(project -> {
+                    if (expectedVersion != null && !expectedVersion.equals(project.getVersion())) {
+                        return Mono.error(new RuntimeException("Version mismatch for project " + projectId));
+                    }
+                    boolean priorityChanged = !project.getPriority().equals(newPriority);
+                    project.setPriority(newPriority);
+                    return projectRepository.save(project)
+                            .doOnError(e -> log.error("Error updating project priority for projectId: {}", projectId, e))
+                            .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project priority", e)))
+                            .map(ProjectUtils::entityToDto)
+                            .doOnSuccess(updatedDto -> {
+                                if (priorityChanged) {
+                                    publishProjectPriorityChangedEvent(updatedDto);
+                                }
+                            });
+                })
+                .onErrorContinue((throwable, o) -> log.error("Unhandled error in updateProjectPriority, skipping element", throwable));
+    }
+
+    private void publishProjectPriorityChangedEvent(ProjectDto projectDto) {
+        try {
+            ProjectPriorityChangedEventPayload payload = new ProjectPriorityChangedEventPayload(projectDto);
+            EventEnvelope<ProjectPriorityChangedEventPayload> envelope = new EventEnvelope<>(
+                    "N/A-priority-change",
+                    ProjectPriorityChangedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectPriorityChangedEvent envelope for projectId: {}", projectDto.getId());
+            kafkaTemplate.send(projectEventsTopic, projectDto.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectPriorityChangedEvent envelope for projectId: {}", projectDto.getId(), e))
+                    .onErrorResume(e -> {
+                        // TODO: Optionally send to dead-letter topic here
+                        log.error("Unrecoverable error publishing ProjectPriorityChangedEvent for projectId: {}", projectDto.getId(), e);
+                        return Mono.empty();
+                    })
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectPriorityChangedEvent for projectId: {}", projectDto.getId(), e);
+        }
+    }
+
+    private void publishProjectPriorityChangedEvent(ProjectDto projectDto, ContextView contextView) {
+        try {
+            String correlationId = contextView.getOrDefault(MdcLoggingFilter.CORRELATION_ID_CONTEXT_KEY, "N/A-priority-change");
+            ProjectPriorityChangedEventPayload payload = new ProjectPriorityChangedEventPayload(projectDto);
+            EventEnvelope<ProjectPriorityChangedEventPayload> envelope = new EventEnvelope<>(
+                    correlationId,
+                    ProjectPriorityChangedEventPayload.EVENT_TYPE,
+                    serviceName,
+                    payload
+            );
+            log.info("Publishing ProjectPriorityChangedEvent envelope for projectId: {} with correlationId: {}", projectDto.getId(), correlationId);
+            kafkaTemplate.send(projectEventsTopic, projectDto.getId(), envelope)
+                    .doOnError(e -> log.error("Failed to send ProjectPriorityChangedEvent envelope for projectId: {}", projectDto.getId(), e))
+                    .onErrorResume(e -> {
+                        // TODO: Optionally send to dead-letter topic here
+                        log.error("Unrecoverable error publishing ProjectPriorityChangedEvent for projectId: {}", projectDto.getId(), e);
+                        return Mono.empty();
+                    })
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Error preparing or sending ProjectPriorityChangedEvent for projectId: {}", projectDto.getId(), e);
+        }
+    }
+
     public Mono<ProjectDto> updateProjectCombined(String id, ProjectDto dto) {
         return projectRepository.findById(id)
                 .flatMap(project -> {
                     boolean statusChanged = !project.getStatus().equals(dto.getStatus());
+                    boolean priorityChanged = !project.getPriority().equals(dto.getPriority());
+
                     project.setName(dto.getName());
                     project.setDescription(dto.getDescription());
                     project.setStatus(dto.getStatus());
@@ -345,10 +471,16 @@ public class ProjectService {
                             .onErrorResume(e -> Mono.error(new RuntimeException("Failed to update project combined fields", e)))
                             .map(ProjectUtils::entityToDto)
                             .doOnSuccess(updatedDto -> {
+                                // Publish general update event
+                                publishProjectUpdatedEvent(updatedDto);
+
+                                // Publish specific events if fields changed
                                 if (statusChanged) {
                                     publishProjectStatusChangedEvent(updatedDto);
                                 }
-                                publishProjectUpdatedEvent(updatedDto);
+                                if (priorityChanged) {
+                                    publishProjectPriorityChangedEvent(updatedDto);
+                                }
                             });
                 })
                 .onErrorContinue((throwable, o) -> log.error("Unhandled error in updateProjectCombined, skipping element", throwable));
