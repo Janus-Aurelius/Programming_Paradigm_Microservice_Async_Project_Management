@@ -12,8 +12,8 @@ import org.springframework.kafka.core.reactive.ReactiveKafkaProducerTemplate; //
 import org.springframework.stereotype.Service; // Assuming this provides the context key
 import org.springframework.web.reactive.function.client.WebClient;
 
-import com.pm.commoncontracts.domain.ProjectStatus;
 import com.pm.commoncontracts.domain.ProjectPriority;
+import com.pm.commoncontracts.domain.ProjectStatus;
 import com.pm.commoncontracts.dto.ProjectDto; // Using your existing mapper utility
 import com.pm.commoncontracts.dto.TaskDto; // Your internal domain entity
 import com.pm.commoncontracts.envelope.EventEnvelope;
@@ -216,6 +216,23 @@ public class ProjectService {
         // Use deferContextual to access Reactor Context
         return Mono.deferContextual(contextView -> {
             Project projectEntity = ProjectUtils.dtoToEntity(projectDto);
+
+            // Manually set auditing fields since MongoDB auditing may not work properly 
+            // in microservice setup with X-User-Id headers
+            java.time.Instant now = java.time.Instant.now();
+            projectEntity.setCreatedAt(now);
+            projectEntity.setUpdatedAt(now);
+
+            // Use createdBy from DTO if available (set by controller from X-User-Id header)
+            if (projectDto.getCreatedBy() != null && !projectDto.getCreatedBy().trim().isEmpty()) {
+                projectEntity.setCreatedBy(projectDto.getCreatedBy());
+                projectEntity.setLastModifiedBy(projectDto.getCreatedBy());
+            } else {
+                // Fallback to "system" if no user info available
+                projectEntity.setCreatedBy("system");
+                projectEntity.setLastModifiedBy("system");
+            }
+
             return projectRepository.save(projectEntity)
                     .doOnError(e -> log.error("Error creating project", e))
                     .onErrorResume(e -> Mono.error(new RuntimeException("Failed to create project", e)))

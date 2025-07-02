@@ -49,27 +49,37 @@ public class TaskUtils {
                 .status(dto.getStatus())
                 .priority(dto.getPriority())
                 .description(dto.getDescription())
-                .createdBy(dto.getCreatedBy())
-                .updatedBy(dto.getUpdatedBy())
                 .assigneeId(dto.getAssigneeId())
                 .tags(dto.getTags())
                 .version(dto.getVersion());
 
-        // Parse date fields from String format for entity
-        if (dto.getCreatedAt() != null && !dto.getCreatedAt().trim().isEmpty()) {
-            try {
-                builder.createdAt(java.time.Instant.parse(dto.getCreatedAt()));
-            } catch (Exception e) {
-                // Skip invalid date format
+        // Only set auditing fields if this is an update (has an ID) and the DTO explicitly provides them
+        // For new entities (no ID), let MongoDB auditing handle createdAt/createdBy automatically
+        if (dto.getId() != null) {
+            // This is an update operation - preserve existing auditing fields if provided
+            if (dto.getCreatedAt() != null && !dto.getCreatedAt().trim().isEmpty()) {
+                try {
+                    builder.createdAt(java.time.Instant.parse(dto.getCreatedAt()));
+                } catch (Exception e) {
+                    // Skip invalid date format
+                }
+            }
+            if (dto.getCreatedBy() != null && !dto.getCreatedBy().trim().isEmpty()) {
+                builder.createdBy(dto.getCreatedBy());
+            }
+            if (dto.getUpdatedAt() != null && !dto.getUpdatedAt().trim().isEmpty()) {
+                try {
+                    builder.updatedAt(java.time.Instant.parse(dto.getUpdatedAt()));
+                } catch (Exception e) {
+                    // Skip invalid date format
+                }
+            }
+            if (dto.getUpdatedBy() != null && !dto.getUpdatedBy().trim().isEmpty()) {
+                builder.updatedBy(dto.getUpdatedBy());
             }
         }
-        if (dto.getUpdatedAt() != null && !dto.getUpdatedAt().trim().isEmpty()) {
-            try {
-                builder.updatedAt(java.time.Instant.parse(dto.getUpdatedAt()));
-            } catch (Exception e) {
-                // Skip invalid date format
-            }
-        }
+        // For new entities (dto.getId() == null), don't set auditing fields - let @CreatedDate and @CreatedBy handle them
+
         if (dto.getDueDate() != null && !dto.getDueDate().trim().isEmpty()) {
             try {
                 builder.dueDate(java.time.Instant.parse(dto.getDueDate()));

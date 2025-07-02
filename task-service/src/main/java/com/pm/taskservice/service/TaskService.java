@@ -101,7 +101,23 @@ public class TaskService {
         // Use deferContextual to access Reactor Context for correlationId
         return Mono.deferContextual(contextView -> {
             Task taskEntity = TaskUtils.dtoToEntity(taskDto);
-            // You might want to set default status, creation date etc. on taskEntity here
+
+            // Manually set auditing fields since MongoDB auditing may not work properly 
+            // in microservice setup with X-User-Id headers
+            Instant now = Instant.now();
+            taskEntity.setCreatedAt(now);
+            taskEntity.setUpdatedAt(now);
+
+            // Use createdBy from DTO if available (set by controller from X-User-Id header)
+            if (taskDto.getCreatedBy() != null && !taskDto.getCreatedBy().trim().isEmpty()) {
+                taskEntity.setCreatedBy(taskDto.getCreatedBy());
+                taskEntity.setUpdatedBy(taskDto.getCreatedBy());
+            } else {
+                // Fallback to "system" if no user info available
+                taskEntity.setCreatedBy("system");
+                taskEntity.setUpdatedBy("system");
+            }
+
             return repository.insert(taskEntity)
                     .doOnSuccess(createdTask -> publishTaskCreatedEvent(createdTask, contextView)) // Publish event on success
                     .doOnError(e -> log.error("Error creating task", e))
